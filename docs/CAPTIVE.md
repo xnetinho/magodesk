@@ -29,6 +29,18 @@ A chave privada nunca entra aqui. Sem `RD_HOST` e `RD_KEY` o build não é cativ
 - `api-server` vale `https://<RD_HOST>` só para o esquema `wss`. Nenhuma API é chamada (`register-device=N`).
 - NTLM e Kerberos não são suportados (`libs/hbb_common/src/proxy.rs`).
 
+## Aviso do Windows e verificação do arquivo
+
+Os pacotes **não têm assinatura de código**: o projeto é pessoal, sem fins comerciais e sem orçamento para certificado. O Windows mostra "O Windows protegeu o computador" e o usuário escolhe *Mais informações > Executar assim mesmo*. O Windows 11 recém-instalado pode bloquear sem esse botão (*Smart App Control*). A pesquisa de alternativas gratuitas está no `ESTADO.md` (pendência de assinatura).
+
+Depois que os pacotes sobem, o job `release-notes` do workflow:
+- gera `SHA256SUMS.txt` com o hash de cada `.exe`, `.msi` e `.apk` e o anexa à release;
+- acrescenta à descrição da release o passo a passo de instalação e uma tabela com os hashes.
+
+O texto que você escrever na descrição é preservado: o job só reescreve o bloco entre `<!-- magodesk-install:begin -->` e `<!-- magodesk-install:end -->`, então rodar de novo substitui o bloco em vez de duplicá-lo. O código está em `res/release_notes.py` (`sums` e `body`).
+
+Conferir um arquivo baixado, no PowerShell: `Get-FileHash .\magodesk-<versão>-x86_64.exe -Algorithm SHA256`.
+
 ## Nome do produto (rebranding)
 
 `RD_APP_NAME` define o nome do executável (`MagoDesk.exe`), o pipe IPC, a pasta de configuração, o nome do serviço e os metadados do arquivo. Isso permite instalar o cliente ao lado de um RustDesk oficial sem colisão. O nome é gravado em `APP_NAME` dentro de `captive::apply()`, antes de qualquer uso de `Config`. Como o nome deixa de ser `RustDesk`, `is_custom_client()` passa a ser verdadeiro; ver `CONTEXT.md` para o efeito nos padrões.
