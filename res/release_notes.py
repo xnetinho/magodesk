@@ -19,12 +19,35 @@ SUMS = "SHA256SUMS.txt"
 SKIP_SUFFIX = (".json", ".txt")
 
 
+MAC_STEPS = """
+**macOS** (`.dmg`): o app tem só uma assinatura local ("ad hoc", sem custo), não a da Apple. Ela basta para o Apple Silicon executar o app, mas o Gatekeeper avisa na primeira vez:
+1. Abra o `.dmg` e arraste o app para a pasta **Aplicativos**.
+2. Abra o app. O macOS diz que não pôde verificar o desenvolvedor. Clique em **Concluído** (não em "Mover para o Lixo").
+3. Vá em **Ajustes do Sistema > Privacidade e Segurança**, role até **Segurança** e clique em **Abrir Mesmo Assim**. Digite a senha de administrador. Isso é feito uma vez por versão.
+4. No macOS 14 ou anterior, também funciona clicar com o botão direito no app e escolher **Abrir**. No macOS 15 em diante esse atalho não existe.
+5. Se preferir o Terminal: `xattr -dr com.apple.quarantine /Applications/{app}.app` e depois abra o app.
+6. Em **Privacidade e Segurança**, conceda **Acessibilidade** e **Gravação de Tela** para que o controle e o compartilhamento funcionem. Como a assinatura é local, o macOS pode pedir essas permissões de novo depois de uma atualização.
+"""
+
+
 def sha256(path):
     h = hashlib.sha256()
     with Path(path).open("rb") as fh:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def app_name(folder):
+    """Product name from the package file names (<app>-<tag>-<arch>.<ext>), as the build capitalises it."""
+    import os
+    name = os.environ.get("RD_APP_NAME", "").strip()
+    if name:
+        return name
+    for p in packages(folder):
+        if p.suffix == ".dmg":
+            return p.name.split("-")[0].capitalize()
+    return "MagoDesk"
 
 
 def packages(folder):
@@ -49,6 +72,8 @@ def install_block(folder):
     for p in packages(folder):
         rows.append(f"| `{p.name}` | `{sha256(p)}` |")
     table = "\n".join(rows)
+    has_mac = any(p.suffix == ".dmg" for p in packages(folder))
+    mac = MAC_STEPS.replace("{app}", app_name(folder)) if has_mac else ""
     return f"""{BEGIN}
 ## Como instalar
 
@@ -60,7 +85,7 @@ Estes arquivos **não têm assinatura de código** (o projeto é pessoal, sem fi
 3. Se o Windows 11 (instalação nova) bloquear **sem** esse botão, é o *Smart App Control*. Abra *Segurança do Windows > Controle de aplicativos e navegador > Smart App Control* e desative-o, ou instale rodando o `.msi` por um terminal como administrador.
 
 **Android** (`.apk`): permita instalar apps desta origem quando o aparelho pedir. Use sempre o mesmo tipo de APK no mesmo aparelho.
-
+{mac}
 **Confira o arquivo antes de executar.** O `SHA256SUMS.txt` desta release lista a impressão digital de cada pacote. No Windows (PowerShell):
 
 ```

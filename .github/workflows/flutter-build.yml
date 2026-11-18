@@ -18,6 +18,9 @@ on:
       android:
         type: boolean
         default: false
+      macos:
+        type: boolean
+        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -953,7 +956,7 @@ jobs:
 
 
   build-for-macOS:
-    if: ${{ !inputs.windows-only }}
+    if: ${{ inputs.macos }}
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -990,6 +993,13 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Stamp the release version and the macOS brand
+        shell: bash
+        run: |
+          python3 res/set_version.py "${{ inputs.upload-tag }}"
+          tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
+          python3 res/set_macos_brand.py "$RD_APP_NAME"
 
       - name: Import the codesign cert
         if: env.MACOS_P12_BASE64 != null
@@ -1176,7 +1186,7 @@ jobs:
           CREATE_DMG="$(command -v create-dmg)"
           CREATE_DMG="$(readlink -f "$CREATE_DMG")"
           sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
-          create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app
+          create-dmg --icon "${RD_APP_NAME}.app" 200 190 --hide-extension "${RD_APP_NAME}.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg ./flutter/build/macos/Build/Products/Release/${RD_APP_NAME}.app
 
       - name: Upload unsigned macOS app
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -1214,24 +1224,43 @@ jobs:
           # notarize the rustdesk-${{ env.VERSION }}.dmg
           rcodesign notary-submit --api-key-path ${{ github.workspace }}/rustdesk.json  --staple rustdesk-${{ env.VERSION }}.dmg
 
-      - name: Rename rustdesk
+      - name: Sign ad hoc and create the dmg
+        # No Apple Developer ID here (it costs US$ 99/year), so the app gets an ad hoc signature:
+        # Apple Silicon only runs signed code, and an ad hoc signature satisfies that. Gatekeeper still
+        # warns once; the install notes on the release explain the "Open Anyway" step.
+        if: env.MACOS_P12_BASE64 == null && env.UPLOAD_ARTIFACT == 'true'
+        shell: bash
+        run: |
+          APP="./flutter/build/macos/Build/Products/Release/${RD_APP_NAME}.app"
+          test -d "$APP"
+          bash ./.github/scripts/sign-macos-app.sh "$APP" - ./flutter/macos/Runner/Release.entitlements
+          codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|flags" || true
+          CREATE_DMG="$(readlink -f "$(command -v create-dmg)")"
+          sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
+          rm -f ./*.dmg
+          create-dmg --icon "${RD_APP_NAME}.app" 200 190 --hide-extension "${RD_APP_NAME}.app" --window-size 800 400 --app-drop-link 600 185 "rustdesk-${VERSION}.dmg" "$APP"
+
+      - name: Name the dmg like the other packages
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: bash
         env:
-          VERSION: ${{ env.VERSION }}
           ARCH: ${{ matrix.job.arch }}
         run: |
-          if [ -f "rustdesk-${VERSION}.dmg" ]; then
-              mv "rustdesk-${VERSION}.dmg" "rustdesk-${VERSION}-${ARCH}.dmg"
-          fi
-          test -f "rustdesk-${VERSION}-${ARCH}.dmg"
+          # the signed and the ad hoc paths both leave rustdesk-<version>.dmg; the unsigned one
+          # created earlier is already named rustdesk-<version>-<arch>.dmg and gets replaced here
+          src="rustdesk-${VERSION}.dmg"
+          [ -f "$src" ] || src="rustdesk-${VERSION}-${ARCH}.dmg"
+          out="${RD_APP_NAME,,}-${TAG_NAME}-${ARCH}.dmg"
+          mv "$src" "$out"
+          test -f "$out"
+          echo "DMG_FILE=$out" >> "$GITHUB_ENV"
 
       - name: Upload signed macOS DMG
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.MACOS_P12_BASE64 != null
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.job.arch }}-dmg
-          path: ./rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg
+          path: ./${{ env.DMG_FILE }}
           if-no-files-found: error
 
       - name: Publish DMG package
@@ -1241,7 +1270,7 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            rustdesk*-${{ matrix.job.arch }}.dmg
+            ${{ env.DMG_FILE }}
 
   publish-signed-update-metadata:
     needs: [build-for-windows-flutter, build-for-windows-sciter, build-for-macOS]
@@ -3057,7 +3086,7 @@ jobs:
     # Adds SHA256SUMS.txt and the install instructions to the release once the packages are up.
     # It also runs when the Android jobs were skipped; it only needs the Windows build to have worked.
     name: release notes and checksums
-    needs: [build-for-windows-flutter, build-rustdesk-android, build-rustdesk-android-universal]
+    needs: [build-for-windows-flutter, build-rustdesk-android, build-rustdesk-android-universal, build-for-macOS]
     if: ${{ !cancelled() && inputs.upload-artifact && needs.build-for-windows-flutter.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -3073,7 +3102,7 @@ jobs:
         run: |
           mkdir rel
           gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir rel \
-            --pattern '*.exe' --pattern '*.msi' --pattern '*.apk'
+            --pattern '*.exe' --pattern '*.msi' --pattern '*.apk' --pattern '*.dmg'
           python3 res/release_notes.py sums rel
           gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body > body.txt
           python3 res/release_notes.py body rel body.txt > new-body.txt

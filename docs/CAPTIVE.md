@@ -41,6 +41,18 @@ O texto que você escrever na descrição é preservado: o job só reescreve o b
 
 Conferir um arquivo baixado, no PowerShell: `Get-FileHash .\magodesk-<versão>-x86_64.exe -Algorithm SHA256`.
 
+## macOS
+
+Sem conta Apple paga (US$ 99/ano), o app **não tem** Developer ID nem notarização. O job `build-for-macOS` gera o `.dmg` com **assinatura ad hoc**: o Apple Silicon só executa código assinado, e a assinatura local satisfaz isso. O Gatekeeper ainda avisa na primeira execução ("não pôde verificar o desenvolvedor"). A descrição da release traz o passo a passo (*Ajustes do Sistema > Privacidade e Segurança > Abrir Mesmo Assim*; no macOS 15 em diante o atalho do botão direito deixou de existir; alternativa `xattr -dr com.apple.quarantine`).
+
+Se um dia houver os secrets `MACOS_P12_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_CODESIGN_IDENTITY` e `MACOS_NOTARIZE_JSON`, o workflow volta ao caminho do upstream (Developer ID + notarização com `rcodesign`) e o passo ad hoc é pulado.
+
+- **Marca:** `res/set_macos_brand.py "$RD_APP_NAME"` roda no CI antes do build e grava nome do `.app`, `PRODUCT_NAME`, identificador `br.com.diomedes.<app>` e esquema de link (`magodesk://`) no `AppInfo.xcconfig`, `Info.plist` (via variáveis) e `Cargo.toml`. Os plists do launchd (serviço e agente) são reescritos pelo programa em execução a partir de `APP_NAME` e do identificador do bundle (`correct_app_name` em `src/platform/macos.rs`). Removi o `DEVELOPMENT_TEAM` do upstream do projeto Xcode.
+- **Arquivos:** `magodesk-<tag>-x86_64.dmg` e `magodesk-<tag>-aarch64.dmg`. O `x86_64` roda em Mac Intel; o `aarch64`, em Apple Silicon.
+- **Permissões:** o app precisa de Acessibilidade e Gravação de Tela. Como a assinatura ad hoc muda a cada versão, o macOS pode pedir essas permissões de novo depois de uma atualização.
+- **Quando roda:** só com release publicada (ou disparo manual com `windows-only=false`). Não compila nem roda no nightly.
+- **Limite:** nada disto foi compilado nem executado em um Mac. O iOS está **fora de escopo** (o job existe, mas não publica `.ipa`).
+
 ## Nome do produto (rebranding)
 
 `RD_APP_NAME` define o nome do executável (`MagoDesk.exe`), o pipe IPC, a pasta de configuração, o nome do serviço e os metadados do arquivo. Isso permite instalar o cliente ao lado de um RustDesk oficial sem colisão. O nome é gravado em `APP_NAME` dentro de `captive::apply()`, antes de qualquer uso de `Config`. Como o nome deixa de ser `RustDesk`, `is_custom_client()` passa a ser verdadeiro; ver `CONTEXT.md` para o efeito nos padrões.
