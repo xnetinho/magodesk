@@ -1753,12 +1753,26 @@ jobs:
           # env.ANDROID_SIGN_TOOL_VERSION is set by Step "Setup sign tool version variable"
           BUILD_TOOLS_VERSION: ${{ env.ANDROID_SIGN_TOOL_VERSION }}
 
+      - name: Name the signed APK like the other packages
+        # sign-android-release writes <name>-signed.apk; the published name has no suffix.
+        if: env.ANDROID_SIGNING_KEY != null
+        id: signed-name
+        shell: bash
+        run: |
+          f="${{ steps.sign-rustdesk.outputs.signedReleaseFile }}"
+          out="$f"
+          case "$f" in
+            *-signed.apk) out="${f%-signed.apk}.apk"; mv "$f" "$out";;
+          esac
+          test -f "$out"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+
       - name: Upload Artifacts
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.RD_APP_NAME }}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}.apk
-          path: ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
+          path: ${{ steps.signed-name.outputs.file }}
 
       - name: Publish signed apk package
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
@@ -1767,7 +1781,7 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
+            ${{ steps.signed-name.outputs.file }}
 
       - name: Publish unsigned apk package
         if: env.ANDROID_SIGNING_KEY == null && env.UPLOAD_ARTIFACT == 'true'
@@ -1944,12 +1958,26 @@ jobs:
           # env.ANDROID_SIGN_TOOL_VERSION is set by Step "Setup sign tool version variable"
           BUILD_TOOLS_VERSION: ${{ env.ANDROID_SIGN_TOOL_VERSION }}
 
+      - name: Name the signed APK like the other packages
+        # sign-android-release writes <name>-signed.apk; the published name has no suffix.
+        if: env.ANDROID_SIGNING_KEY != null
+        id: signed-name
+        shell: bash
+        run: |
+          f="${{ steps.sign-rustdesk.outputs.signedReleaseFile }}"
+          out="$f"
+          case "$f" in
+            *-signed.apk) out="${f%-signed.apk}.apk"; mv "$f" "$out";;
+          esac
+          test -f "$out"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+
       - name: Upload Artifacts
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.RD_APP_NAME }}-${{ env.TAG_NAME }}-universal.apk
-          path: ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
+          path: ${{ steps.signed-name.outputs.file }}
 
       - name: Publish signed apk package
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
@@ -1958,7 +1986,7 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
+            ${{ steps.signed-name.outputs.file }}
 
       - name: Publish unsigned apk package
         if: env.ANDROID_SIGNING_KEY == null && env.UPLOAD_ARTIFACT == 'true'

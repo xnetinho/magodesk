@@ -37,14 +37,29 @@ A chave privada nunca entra aqui. Sem `RD_HOST` e `RD_KEY` o build não é cativ
 
 A **tag define a versão**. `res/set_version.py <tag>` grava a versão em `Cargo.toml`, `libs/portable/Cargo.toml`, `Cargo.lock` e `flutter/pubspec.yaml` antes de cada build; o sufixo `-rcN` fica só na tag e nos nomes dos arquivos, porque o binário, o MSI e o Flutter exigem `X.Y.Z` numérico. A base do produto é `1.0.0`.
 
-| Tag | Uso | Release | Versão no app | `versionCode` Android |
-|---|---|---|---|---|
-| `v1.0.0-rc1` | teste | **pre-release** | 1.0.0 | 1000001 |
-| `v1.0.0-rc2` | teste | pre-release | 1.0.0 | 1000002 |
-| `v1.0.0` | final | release normal | 1.0.0 | 1000099 |
-| `v1.0.1` | final | release normal | 1.0.1 | 1000199 |
+| Tag | Uso | Release | Versão no app |
+|---|---|---|---|
+| `v1.0.0-rc1` | teste | **pre-release** | 1.0.0 |
+| `v1.0.0-rc2` | teste | pre-release | 1.0.0 |
+| `v1.0.0` | final | release normal | 1.0.0 |
+| `v1.0.1` | final | release normal | 1.0.1 |
 
-`versionCode = MAJOR*1000000 + MINOR*10000 + PATCH*100 + (rcN, ou 99 na final)`. A ordem rc1 < rc2 < final < próximo patch garante que o Android aceite atualizar de um candidato para o seguinte e para a final. Limites: minor e patch até 99, rc de 1 a 98.
+### `versionCode` do Android
+
+`res/set_version.py` calcula a base `MAJOR*1000000 + MINOR*10000 + PATCH*100 + (rcN, ou 99 na final)`. O Flutter ainda **soma um prefixo por arquitetura** nos APKs separados (`--split-per-abi`): armv7 +1000, arm64 +2000, x86 +3000, x86_64 +4000; o universal não soma nada. Valores reais (conferidos nos APKs de `v1.0.0-rc1`):
+
+| Tag | armv7 | arm64 | x86_64 | universal |
+|---|---|---|---|---|
+| `v1.0.0-rc1` | 1001001 | 1002001 | 1004001 | 1000001 |
+| `v1.0.0-rc2` | 1001002 | 1002002 | 1004002 | 1000002 |
+| `v1.0.0` | 1001099 | 1002099 | 1004099 | 1000099 |
+| `v1.0.1` | 1001199 | 1002199 | 1004199 | 1000199 |
+
+Na **mesma arquitetura** a ordem rc1 < rc2 < final < próximo patch vale, e o Android aceita atualizar. Duas consequências:
+
+- **Instale sempre o mesmo tipo de APK no mesmo aparelho.** O universal tem `versionCode` menor que o arm64 da mesma tag, então não atualiza um arm64 já instalado (e o contrário atualiza, mas troca de tipo).
+- O prefixo (até 4000) é maior que o passo de patch (100): trocar de arquitetura no mesmo aparelho entre versões distintas pode ser recusado. Na prática um aparelho não muda de arquitetura.
+- Limites: minor e patch até 99, rc de 1 a 98.
 
 ## Nomes dos arquivos
 
@@ -54,7 +69,7 @@ O build roda quando uma release é **publicada** (`.github/workflows/flutter-tag
 |---|---|
 | Windows portátil | `magodesk-v1.0.0-rc1-x86_64.exe`, `magodesk-v1.0.0-rc1-aarch64.exe` |
 | Windows MSI | `magodesk-v1.0.0-rc1-x86_64.msi`, `...-aarch64.msi` |
-| Android | `magodesk-v1.0.0-rc1-aarch64.apk`, `...-armv7.apk`, `...-x86_64.apk`, `...-universal.apk` |
+| Android | `magodesk-v1.0.0-rc1-aarch64.apk`, `...-armv7.apk`, `...-x86_64.apk`, `...-universal.apk` (todos assinados; o workflow tira o sufixo `-signed` que a action de assinatura acrescenta) |
 
 O workflow marca a release como pre-release quando a tag contém `-rc`; isso sobrescreve o que estiver na release, então a tag é que manda.
 
@@ -72,7 +87,8 @@ gh release create v1.0.0-rc1 --prerelease --target master --title "v1.0.0-rc1" -
 - O nome visível, o canal de notificação, o texto do `BootReceiver` e o esquema de link (`magodesk://`) vêm de `RD_APP_NAME`.
 - O serviço pode subir no boot sem o Flutter. `Java_ffi_FFI_startServer` chama `captive::apply()` para que ele nunca registre no servidor público.
 - O aviso de golpe antes de compartilhar a tela mantém os 12 s, mesmo com `isCustomClient` verdadeiro.
-- Assinatura: o job usa os secrets `ANDROID_*`; o APK de teste e o final saem assinados com a mesma chave.
+- Assinatura: o job usa os secrets `ANDROID_*`; o APK de teste e o final saem assinados com a mesma chave (alias `rustdesk`, titular `CN=RustDesk Diomedes`; o alias é só um rótulo interno, e trocá-lo mudaria a identidade de assinatura).
+- Verificado em `v1.0.0-rc1`: pacote `br.com.diomedes.magodesk`, nome `MagoDesk`, serviço `MagoDesk Input`, esquema `magodesk://`, `versionName` 1.0.0. Nenhum teste de execução em aparelho ainda.
 
 `flutter-nightly.yml` continua disponível só como disparo manual.
 
