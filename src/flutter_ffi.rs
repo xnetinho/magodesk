@@ -3091,6 +3091,8 @@ pub mod server_side {
         log::debug!("startServer from jvm");
         // Started at boot, the service runs without the Flutter side and its `initialize`.
         crate::common::init_sodium();
+        // The app name decides the config paths, so the captive settings go in before them.
+        crate::captive::apply();
         let mut env = env;
         if let Ok(app_dir) = env.get_string(&app_dir) {
             *config::APP_DIR.write().unwrap() = app_dir.into();

@@ -273,7 +273,8 @@ class ScamWarningDialog extends StatefulWidget {
 }
 
 class ScamWarningDialogState extends State<ScamWarningDialog> {
-  int _countdown = bind.isCustomClient() ? 0 : 12;
+  // Kept at 12s even though a rebranded app is a "custom client" (which would skip the wait).
+  int _countdown = 12;
   bool show_warning = false;
   late Timer _timer;
   late ServerModel _serverModel;

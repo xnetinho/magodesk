@@ -33,31 +33,46 @@ A chave privada nunca entra aqui. Sem `RD_HOST` e `RD_KEY` o build não é cativ
 
 `RD_APP_NAME` define o nome do executável (`MagoDesk.exe`), o pipe IPC, a pasta de configuração, o nome do serviço e os metadados do arquivo. Isso permite instalar o cliente ao lado de um RustDesk oficial sem colisão. O nome é gravado em `APP_NAME` dentro de `captive::apply()`, antes de qualquer uso de `Config`. Como o nome deixa de ser `RustDesk`, `is_custom_client()` passa a ser verdadeiro; ver `CONTEXT.md` para o efeito nos padrões.
 
-## Release e nomes dos arquivos
+## Versão e release
 
-O build roda quando uma release é **publicada** (`.github/workflows/flutter-tag.yml`) e anexa os pacotes à própria release:
+A **tag define a versão**. `res/set_version.py <tag>` grava a versão em `Cargo.toml`, `libs/portable/Cargo.toml`, `Cargo.lock` e `flutter/pubspec.yaml` antes de cada build; o sufixo `-rcN` fica só na tag e nos nomes dos arquivos, porque o binário, o MSI e o Flutter exigem `X.Y.Z` numérico. A base do produto é `1.0.0`.
 
-| Arquivo | Exemplo |
+| Tag | Uso | Release | Versão no app | `versionCode` Android |
+|---|---|---|---|---|
+| `v1.0.0-rc1` | teste | **pre-release** | 1.0.0 | 1000001 |
+| `v1.0.0-rc2` | teste | pre-release | 1.0.0 | 1000002 |
+| `v1.0.0` | final | release normal | 1.0.0 | 1000099 |
+| `v1.0.1` | final | release normal | 1.0.1 | 1000199 |
+
+`versionCode = MAJOR*1000000 + MINOR*10000 + PATCH*100 + (rcN, ou 99 na final)`. A ordem rc1 < rc2 < final < próximo patch garante que o Android aceite atualizar de um candidato para o seguinte e para a final. Limites: minor e patch até 99, rc de 1 a 98.
+
+## Nomes dos arquivos
+
+O build roda quando uma release é **publicada** (`.github/workflows/flutter-tag.yml`) e anexa os pacotes à própria release. Padrão: `<app em minúsculas>-<TAG>-<arquitetura>.<extensão>`.
+
+| Plataforma | Exemplo |
 |---|---|
-| Portátil | `magodesk-v1.5.4-x86_64.exe`, `magodesk-v1.5.4-aarch64.exe` |
-| MSI | `magodesk-v1.5.4-x86_64.msi`, `magodesk-v1.5.4-aarch64.msi` |
+| Windows portátil | `magodesk-v1.0.0-rc1-x86_64.exe`, `magodesk-v1.0.0-rc1-aarch64.exe` |
+| Windows MSI | `magodesk-v1.0.0-rc1-x86_64.msi`, `...-aarch64.msi` |
+| Android | `magodesk-v1.0.0-rc1-aarch64.apk`, `...-armv7.apk`, `...-x86_64.apk`, `...-universal.apk` |
 
-Padrão: `<app em minúsculas>-<TAG>-<arquitetura>.<exe|msi>`.
-
-| Tag | Uso | Release |
-|---|---|---|
-| `vX.Y.Z-rcN` (ex.: `v1.5.4-rc1`) | teste | marcar como **pre-release** |
-| `vX.Y.Z` (ex.: `v1.5.4`) | final | release normal |
-
-O workflow marca a release como pre-release quando a tag contém `-rc` (e `nightly`); isso sobrescreve o que estiver na release, então a tag é que manda.
+O workflow marca a release como pre-release quando a tag contém `-rc`; isso sobrescreve o que estiver na release, então a tag é que manda.
 
 Passo a passo de um teste:
 
 ```
-gh release create v1.5.4-rc1 --prerelease --target master --title "v1.5.4-rc1" --notes "teste"
+gh release create v1.0.0-rc1 --prerelease --target master --title "v1.0.0-rc1" --notes "teste"
 ```
 
-`gh release create` cria a tag a partir de `master` e publica a release, o que dispara o build. Para refazer uma tag existente: `gh workflow run flutter-tag.yml -f tag=v1.5.4-rc1`.
+`gh release create` cria a tag a partir de `master` e publica a release. Se o build não disparar sozinho, use o disparo manual: `gh workflow run flutter-tag.yml -f tag=v1.0.0-rc1 -f windows-only=false`.
+
+## Android
+
+- `applicationId` = `br.com.diomedes.magodesk` (permanente: trocar depois exige desinstalar o app nos aparelhos). O `namespace` Kotlin continua `com.carriez.flutter_hbb`; só o pacote `ffi` precisa manter o nome (ver `AGENTS.md`).
+- O nome visível, o canal de notificação, o texto do `BootReceiver` e o esquema de link (`magodesk://`) vêm de `RD_APP_NAME`.
+- O serviço pode subir no boot sem o Flutter. `Java_ffi_FFI_startServer` chama `captive::apply()` para que ele nunca registre no servidor público.
+- O aviso de golpe antes de compartilhar a tela mantém os 12 s, mesmo com `isCustomClient` verdadeiro.
+- Assinatura: o job usa os secrets `ANDROID_*`; o APK de teste e o final saem assinados com a mesma chave.
 
 `flutter-nightly.yml` continua disponível só como disparo manual.
 
