@@ -61,6 +61,9 @@ env:
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   PUBLISH_UPDATE_METADATA: "${{ inputs.publish-update-metadata }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
+  # captive client: server and public key baked in at compile time (src/captive.rs)
+  RD_HOST: "${{ secrets.RD_HOST }}"
+  RD_KEY: "${{ secrets.RD_KEY }}"
 
 jobs:
   validate-update-metadata-keys:
@@ -68,6 +71,13 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Require the captive server settings
+        if: ${{ inputs.upload-artifact }}
+        run: |
+          if [ -z "$RD_HOST" ] || [ -z "$RD_KEY" ]; then
+            echo "::error::secrets RD_HOST and RD_KEY are required, otherwise the client would point at the public RustDesk servers"
+            exit 1
+          fi
       - name: Checkout source code
         if: ${{ inputs.publish-update-metadata }}
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

@@ -556,9 +556,9 @@ pub fn set_socks(proxy: String, username: String, password: String) {
     {
         let _nat = crate::CheckTestNatType::new();
         if socks.proxy.is_empty() {
-            Config::set_socks(None);
+            crate::captive::set_socks(None);
         } else {
-            Config::set_socks(Some(socks));
+            crate::captive::set_socks(Some(socks));
         }
         log::info!("socks updated");
     }
