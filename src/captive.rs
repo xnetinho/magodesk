@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 const HOST: Option<&str> = option_env!("RD_HOST");
 const KEY: Option<&str> = option_env!("RD_KEY");
+const APP_NAME: Option<&str> = option_env!("RD_APP_NAME");
 
 fn non_empty(v: Option<&'static str>) -> Option<&'static str> {
     v.map(str::trim).filter(|s| !s.is_empty())
@@ -15,6 +16,17 @@ pub fn server() -> Option<(&'static str, &'static str)> {
 
 pub fn is_captive() -> bool {
     server().is_some()
+}
+
+/// Product name baked in at compile time; `None` keeps the stock "RustDesk".
+fn app_name() -> Option<&'static str> {
+    non_empty(APP_NAME)
+}
+
+/// The name decides the IPC pipe, the config directory and the service name,
+/// so it must be set before anything reads a `Config`.
+fn set_app_name(name: &str) {
+    *config::APP_NAME.write().unwrap() = name.to_owned();
 }
 
 /// The WebSocket scheme (`wss`) is picked from `api-server` starting with `https`,
@@ -38,7 +50,12 @@ fn locked_options(host: &str, key: &str) -> HashMap<String, String> {
 
 /// Proxy and network settings stay visible: companies behind a proxy need to type theirs.
 fn builtin_options() -> HashMap<String, String> {
-    let mut m: HashMap<String, String> = ["hide-server-settings", "hide-websocket-settings"]
+    let mut m: HashMap<String, String> = [
+        "hide-server-settings",
+        "hide-websocket-settings",
+        // is_custom_client() turns true with a new name and would show a "powered by" link
+        "hide-powered-by-me",
+    ]
         .iter()
         .map(|k| (k.to_string(), "Y".to_owned()))
         .collect();
@@ -81,6 +98,9 @@ pub fn apply() {
     let Some((host, key)) = server() else {
         return;
     };
+    if let Some(name) = app_name() {
+        set_app_name(name);
+    }
     let locked = locked_options(host, key);
     config::OVERWRITE_SETTINGS.write().unwrap().extend(locked.clone());
     // enable-check-update is read from the local config, the rest from the server one
@@ -137,6 +157,25 @@ mod tests {
         assert_eq!(m["register-device"], "N");
         assert!(!m.contains_key("hide-proxy-settings"));
         assert!(!m.contains_key("hide-network-settings"));
+    }
+
+    #[test]
+    fn hides_powered_by_link() {
+        assert_eq!(builtin_options()["hide-powered-by-me"], "Y");
+    }
+
+    #[test]
+    fn app_name_is_empty_when_unset() {
+        assert_eq!(non_empty(None), None);
+        assert_eq!(non_empty(Some(" MagoDesk ")), Some("MagoDesk"));
+    }
+
+    #[test]
+    fn app_name_moves_the_ipc_pipe_away_from_rustdesk() {
+        set_app_name("MagoDesk");
+        assert!(Config::ipc_path("").contains("MagoDesk"));
+        assert!(!Config::ipc_path("").contains("RustDesk"));
+        assert_eq!(config::APP_NAME.read().unwrap().as_str(), "MagoDesk");
     }
 
     #[test]

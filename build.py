@@ -33,6 +33,8 @@ elif osx:
 else:
     flutter_build_dir = 'build/linux/x64/release/bundle/'
 flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
+# Rebranded builds name the executable after RD_APP_NAME (see flutter/windows/CMakeLists.txt).
+app_exe_name = (os.environ.get('RD_APP_NAME') or 'rustdesk') + ('.exe' if windows else '')
 skip_cargo = False
 
 
@@ -982,7 +984,7 @@ def build_flutter_windows(version, features, skip_portable_pack):
     os.chdir('libs/portable')
     system2('pip3 install -r requirements.txt')
     system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/rustdesk.exe')
+        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/{app_exe_name}')
     os.chdir('../..')
     if os.path.exists('./rustdesk_portable.exe'):
         os.replace('./target/release/rustdesk-portable-packer.exe',

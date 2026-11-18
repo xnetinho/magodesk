@@ -60,6 +60,13 @@ IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 // Version
 //
 
+#ifndef RD_PRODUCT_NAME
+#define RD_PRODUCT_NAME "RustDesk"
+#endif
+#ifndef RD_EXE_NAME
+#define RD_EXE_NAME "rustdesk.exe"
+#endif
+
 #if defined(FLUTTER_VERSION_MAJOR) && defined(FLUTTER_VERSION_MINOR) && defined(FLUTTER_VERSION_PATCH) && defined(FLUTTER_VERSION_BUILD)
 #define VERSION_AS_NUMBER FLUTTER_VERSION_MAJOR,FLUTTER_VERSION_MINOR,FLUTTER_VERSION_PATCH,FLUTTER_VERSION_BUILD
 #else
@@ -90,12 +97,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Purslane Tech Pte. Ltd." "\0"
-            VALUE "FileDescription", "RustDesk Remote Desktop" "\0"
+            VALUE "FileDescription", RD_PRODUCT_NAME " Remote Desktop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "rustdesk" "\0"
+            VALUE "InternalName", RD_PRODUCT_NAME "\0"
             VALUE "LegalCopyright", "Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved." "\0"
-            VALUE "OriginalFilename", "rustdesk.exe" "\0"
-            VALUE "ProductName", "RustDesk" "\0"
+            VALUE "OriginalFilename", RD_EXE_NAME "\0"
+            VALUE "ProductName", RD_PRODUCT_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

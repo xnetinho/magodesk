@@ -84,7 +84,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
         command_line_arguments.end());
   }
 
-  std::wstring app_name = L"RustDesk";
+#ifndef RD_PRODUCT_NAME
+#define RD_PRODUCT_NAME "RustDesk"
+#endif
+  // Fallback only: get_rustdesk_app_name below returns the real name.
+  std::wstring app_name = L"" RD_PRODUCT_NAME;
   FUNC_RUSTDESK_GET_APP_NAME get_rustdesk_app_name = (FUNC_RUSTDESK_GET_APP_NAME)GetProcAddress(hInstance, "get_rustdesk_app_name");
   if (get_rustdesk_app_name) {
     wchar_t app_name_buffer[512] = {0};
