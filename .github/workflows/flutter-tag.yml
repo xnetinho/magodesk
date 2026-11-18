@@ -14,9 +14,9 @@ on:
         required: true
         type: string
       windows-only:
-        description: "Build only the Windows packages"
+        description: "Build only the Windows packages (uncheck to also build Android)"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -28,4 +28,6 @@ jobs:
     with:
       upload-artifact: true
       upload-tag: ${{ github.event.release.tag_name || inputs.tag }}
-      windows-only: ${{ github.event_name != 'workflow_dispatch' || inputs.windows-only }}
+      # a published release builds Windows and Android; a manual run can narrow it to Windows
+      windows-only: true
+      android: ${{ github.event_name != 'workflow_dispatch' || !inputs.windows-only }}

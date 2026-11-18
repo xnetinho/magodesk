@@ -19,3 +19,4 @@ jobs:
       upload-artifact: true
       upload-tag: "nightly"
       windows-only: ${{ github.event_name != 'workflow_dispatch' || inputs.windows-only }}
+      android: false

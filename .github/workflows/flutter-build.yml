@@ -15,6 +15,9 @@ on:
       windows-only:
         type: boolean
         default: false
+      android:
+        type: boolean
+        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -1462,7 +1465,7 @@ jobs:
           files: rustdesk-${{ env.VERSION }}-unsigned.tar.gz
 
   build-rustdesk-android:
-    if: ${{ !inputs.windows-only }}
+    if: ${{ inputs.android }}
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
@@ -1778,7 +1781,7 @@ jobs:
   build-rustdesk-android-universal:
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact && inputs.android }}
     runs-on: ubuntu-24.04
     env:
       reltype: release
