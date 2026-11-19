@@ -1250,7 +1250,9 @@ jobs:
           # created earlier is already named rustdesk-<version>-<arch>.dmg and gets replaced here
           src="rustdesk-${VERSION}.dmg"
           [ -f "$src" ] || src="rustdesk-${VERSION}-${ARCH}.dmg"
-          out="${RD_APP_NAME,,}-${TAG_NAME}-${ARCH}.dmg"
+          # tr, not ${VAR,,}: the macOS runner ships Bash 3.2, which has no case-conversion expansion
+          lower=$(printf '%s' "$RD_APP_NAME" | tr '[:upper:]' '[:lower:]')
+          out="${lower}-${TAG_NAME}-${ARCH}.dmg"
           mv "$src" "$out"
           test -f "$out"
           echo "DMG_FILE=$out" >> "$GITHUB_ENV"
