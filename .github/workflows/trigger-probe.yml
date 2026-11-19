@@ -1,0 +1,22 @@
+name: Trigger probe
+
+# Diagnostic only: records which automatic events reach this fork. Remove once the release trigger works.
+on:
+  push:
+    branches: [probe-trigger]
+  create:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Event received
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
