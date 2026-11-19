@@ -12,15 +12,6 @@ on:
       publish-update-metadata:
         type: boolean
         default: false
-      windows-only:
-        type: boolean
-        default: false
-      android:
-        type: boolean
-        default: false
-      macos:
-        type: boolean
-        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -62,9 +53,7 @@ env:
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_CMAKE_VERSION: "4.3.0"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836" # 2025.01.13, got "/opt/artifacts/vcpkg/vcpkg: No such file or directory" with latest version
-  # VERSION is the release tag without "v" and "-rcN"; the "Stamp the release version" step sets it
-  # (GitHub expressions have no split()). The default only serves jobs that never stamp it.
-  VERSION: "1.0.0"
+  VERSION: "1.5.3"
   NDK_VERSION: "r28c"
   #signing keys env variable checks
   ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
@@ -72,14 +61,6 @@ env:
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   PUBLISH_UPDATE_METADATA: "${{ inputs.publish-update-metadata }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
-  # captive client: server and public key baked in at compile time (src/captive.rs)
-  RD_HOST: "${{ secrets.RD_HOST }}"
-  RD_KEY: "${{ secrets.RD_KEY }}"
-  # product name (repository variable, not a secret): names the .exe, pipe, service and config dir
-  RD_APP_NAME: "${{ vars.RD_APP_NAME }}"
-  # -rcN tags and the rolling "nightly" tag are pre-releases; vX.Y.Z is final. The release action
-  # overwrites this flag on an existing release, so it must follow the tag instead of a fixed value.
-  IS_PRERELEASE: "${{ contains(inputs.upload-tag, '-rc') || inputs.upload-tag == 'nightly' }}"
 
 jobs:
   validate-update-metadata-keys:
@@ -87,20 +68,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Require the captive server settings
-        if: ${{ inputs.upload-artifact }}
-        run: |
-          if [ -z "$RD_HOST" ] || [ -z "$RD_KEY" ]; then
-            echo "::error::secrets RD_HOST and RD_KEY are required, otherwise the client would point at the public RustDesk servers"
-            exit 1
-          fi
-          if [ -z "$RD_APP_NAME" ]; then
-            echo "::error::repository variable RD_APP_NAME is required, otherwise the client would collide with an installed RustDesk"
-            exit 1
-          fi
-          case "$RD_APP_NAME" in
-            *[!A-Za-z0-9]*) echo "::error::RD_APP_NAME must be letters and digits only"; exit 1;;
-          esac
       - name: Checkout source code
         if: ${{ inputs.publish-update-metadata }}
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -156,7 +123,7 @@ jobs:
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         if: env.UPLOAD_ARTIFACT == 'true'
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             rustdesk.sbom.json
@@ -227,12 +194,6 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
-
-      - name: Stamp the release version
-        shell: bash
-        run: |
-          python3 res/set_version.py "${{ inputs.upload-tag }}"
-          tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -463,7 +424,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true'
         shell: powershell
         run: |
-          $reportedVersion = (& ".\rustdesk\$env:RD_APP_NAME.exe" --version | Out-String).Trim()
+          $reportedVersion = (& ".\rustdesk\rustdesk.exe" --version | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) {
             throw "rustdesk --version exited with $LASTEXITCODE"
           }
@@ -489,7 +450,7 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -e "${RD_APP_NAME}.exe" -l 11 -t "${{ matrix.job.target }}" --exclude-exe
+          python3 ./generate.py -f ../../rustdesk/ -e rustdesk.exe -l 11 -t "${{ matrix.job.target }}" --exclude-exe
           popd
           mkdir -p ./packer-template
           cp ./target/${{ matrix.job.target }}/release/rustdesk-portable-packer.exe ./packer-template/rustdesk-template-${{ matrix.job.arch }}.exe
@@ -509,10 +470,10 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${RD_APP_NAME}.exe"
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}.exe"
+          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
@@ -530,14 +491,13 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python preprocess.py --arp -d ../../rustdesk --app-name $env:RD_APP_NAME
+          python preprocess.py --arp -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
           $msi = Get-ChildItem ./Package/bin/*/Release/en-us/Package.msi | Select-Object -First 1
-          $out = "../../SignOutput/$($env:RD_APP_NAME.ToLower())-${{ env.TAG_NAME }}-${{ matrix.job.arch }}.msi"
-          mv $msi.FullName $out
-          sha256sum ../../SignOutput/*.msi
+          mv $msi.FullName ../../SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.msi
+          sha256sum ../../SignOutput/rustdesk-*.msi
 
       - name: Build pre-built MSI template
         # Two things this works around: preprocess.py rewrites res/msi in place, so the
@@ -561,7 +521,7 @@ jobs:
         run: |
           git checkout -- res/msi
           cp -r ./rustdesk ./rustdesk-msi-template
-          mv "./rustdesk-msi-template/$($env:RD_APP_NAME).exe" ./rustdesk-msi-template/RDAPPNAM.exe
+          mv ./rustdesk-msi-template/rustdesk.exe ./rustdesk-msi-template/RDAPPNAM.exe
           Set-Content -Path ./rustdesk-msi-template/custom.txt -Value 'placeholder' -NoNewline
           $assets = './rustdesk-msi-template/data/flutter_assets/assets'
           New-Item -ItemType Directory -Force -Path $assets | Out-Null
@@ -613,15 +573,14 @@ jobs:
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA != 'true'
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/*.msi
-            ./SignOutput/*.exe
+            ./SignOutput/rustdesk-*.msi
+            ./SignOutput/rustdesk-*.exe
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
-    if: ${{ !inputs.windows-only }}
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.os }}
@@ -828,13 +787,13 @@ jobs:
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA != 'true'
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             ./SignOutput/rustdesk-*.exe
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact }}
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -949,14 +908,13 @@ jobs:
       #   # if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
       #   uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
       #   with:
-      #     prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+      #     prerelease: true
       #     tag_name: ${{ env.TAG_NAME }}
       #     files: |
       #       flutter/build/ios/ipa/*.ipa
 
 
   build-for-macOS:
-    if: ${{ inputs.macos }}
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -993,13 +951,6 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
-
-      - name: Stamp the release version and the macOS brand
-        shell: bash
-        run: |
-          python3 res/set_version.py "${{ inputs.upload-tag }}"
-          tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
-          python3 res/branding.py "$RD_APP_NAME"
 
       - name: Import the codesign cert
         if: env.MACOS_P12_BASE64 != null
@@ -1186,7 +1137,7 @@ jobs:
           CREATE_DMG="$(command -v create-dmg)"
           CREATE_DMG="$(readlink -f "$CREATE_DMG")"
           sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
-          create-dmg --icon "${RD_APP_NAME}.app" 200 190 --hide-extension "${RD_APP_NAME}.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg ./flutter/build/macos/Build/Products/Release/${RD_APP_NAME}.app
+          create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app
 
       - name: Upload unsigned macOS app
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -1224,55 +1175,34 @@ jobs:
           # notarize the rustdesk-${{ env.VERSION }}.dmg
           rcodesign notary-submit --api-key-path ${{ github.workspace }}/rustdesk.json  --staple rustdesk-${{ env.VERSION }}.dmg
 
-      - name: Sign ad hoc and create the dmg
-        # No Apple Developer ID here (it costs US$ 99/year), so the app gets an ad hoc signature:
-        # Apple Silicon only runs signed code, and an ad hoc signature satisfies that. Gatekeeper still
-        # warns once; the install notes on the release explain the "Open Anyway" step.
-        if: env.MACOS_P12_BASE64 == null && env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
-          APP="./flutter/build/macos/Build/Products/Release/${RD_APP_NAME}.app"
-          test -d "$APP"
-          bash ./.github/scripts/sign-macos-app.sh "$APP" - ./flutter/macos/Runner/Release.entitlements
-          codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|flags" || true
-          CREATE_DMG="$(readlink -f "$(command -v create-dmg)")"
-          sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
-          rm -f ./*.dmg
-          create-dmg --icon "${RD_APP_NAME}.app" 200 190 --hide-extension "${RD_APP_NAME}.app" --window-size 800 400 --app-drop-link 600 185 "rustdesk-${VERSION}.dmg" "$APP"
-
-      - name: Name the dmg like the other packages
+      - name: Rename rustdesk
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: bash
         env:
+          VERSION: ${{ env.VERSION }}
           ARCH: ${{ matrix.job.arch }}
         run: |
-          # the signed and the ad hoc paths both leave rustdesk-<version>.dmg; the unsigned one
-          # created earlier is already named rustdesk-<version>-<arch>.dmg and gets replaced here
-          src="rustdesk-${VERSION}.dmg"
-          [ -f "$src" ] || src="rustdesk-${VERSION}-${ARCH}.dmg"
-          # tr, not ${VAR,,}: the macOS runner ships Bash 3.2, which has no case-conversion expansion
-          lower=$(printf '%s' "$RD_APP_NAME" | tr '[:upper:]' '[:lower:]')
-          out="${lower}-${TAG_NAME}-${ARCH}.dmg"
-          mv "$src" "$out"
-          test -f "$out"
-          echo "DMG_FILE=$out" >> "$GITHUB_ENV"
+          if [ -f "rustdesk-${VERSION}.dmg" ]; then
+              mv "rustdesk-${VERSION}.dmg" "rustdesk-${VERSION}-${ARCH}.dmg"
+          fi
+          test -f "rustdesk-${VERSION}-${ARCH}.dmg"
 
       - name: Upload signed macOS DMG
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.MACOS_P12_BASE64 != null
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.job.arch }}-dmg
-          path: ./${{ env.DMG_FILE }}
+          path: ./rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.dmg
           if-no-files-found: error
 
       - name: Publish DMG package
         if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA != 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ${{ env.DMG_FILE }}
+            rustdesk*-${{ matrix.job.arch }}.dmg
 
   publish-signed-update-metadata:
     needs: [build-for-windows-flutter, build-for-windows-sciter, build-for-macOS]
@@ -1378,7 +1308,7 @@ jobs:
       - name: Upload signed update artifacts
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           fail_on_unmatched_files: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
@@ -1395,7 +1325,7 @@ jobs:
       - name: Upload signed update metadata signature
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           fail_on_unmatched_files: true
           tag_name: ${{ env.TAG_NAME }}
           files: ./rustdesk-update.json.sig
@@ -1404,7 +1334,7 @@ jobs:
       - name: Publish signed update metadata
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           fail_on_unmatched_files: true
           tag_name: ${{ env.TAG_NAME }}
           files: ./rustdesk-update.json
@@ -1415,7 +1345,7 @@ jobs:
       - build-for-windows-flutter
       - build-for-windows-sciter
     runs-on: ubuntu-latest
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact }}
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1491,12 +1421,11 @@ jobs:
       - name: Publish unsigned app
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: rustdesk-${{ env.VERSION }}-unsigned.tar.gz
 
   build-rustdesk-android:
-    if: ${{ inputs.android }}
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
@@ -1582,12 +1511,6 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
-
-      - name: Stamp the release version
-        shell: bash
-        run: |
-          python3 res/set_version.py "${{ inputs.upload-tag }}"
-          tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
 
       - name: Check JNI natives are in ffi.FFI
         # Custom clients rename com.carriez.flutter_hbb; only ffi.FFI keeps its name.
@@ -1728,7 +1651,7 @@ jobs:
               # build flutter
               pushd flutter
               flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-arm64 --split-per-abi
-              mv build/app/outputs/flutter-apk/app-arm64-v8a-${{ matrix.job.reltype }}.apk ../${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+              mv build/app/outputs/flutter-apk/app-arm64-v8a-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
             ;;
             armv7-linux-androideabi)
               mkdir -p ./flutter/android/app/src/main/jniLibs/armeabi-v7a
@@ -1737,7 +1660,7 @@ jobs:
               # build flutter
               pushd flutter
               flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-arm --split-per-abi
-              mv build/app/outputs/flutter-apk/app-armeabi-v7a-${{ matrix.job.reltype }}.apk ../${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+              mv build/app/outputs/flutter-apk/app-armeabi-v7a-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
             ;;
             x86_64-linux-android)
               mkdir -p ./flutter/android/app/src/main/jniLibs/x86_64
@@ -1746,7 +1669,7 @@ jobs:
               # build flutter
               pushd flutter
               flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-x64 --split-per-abi
-              mv build/app/outputs/flutter-apk/app-x86_64-${{ matrix.job.reltype }}.apk ../${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+              mv build/app/outputs/flutter-apk/app-x86_64-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
             ;;
             i686-linux-android)
               mkdir -p ./flutter/android/app/src/main/jniLibs/x86
@@ -1755,12 +1678,12 @@ jobs:
               # build flutter
               pushd flutter
               flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-x86 --split-per-abi
-              mv build/app/outputs/flutter-apk/app-x86-${{ matrix.job.reltype }}.apk ../${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+              mv build/app/outputs/flutter-apk/app-x86-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
             ;;
           esac
           popd
           mkdir -p signed-apk; pushd signed-apk
-          mv ../${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk .
+          mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk .
 
       # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
       - name: Setup sign tool version variable
@@ -1784,49 +1707,35 @@ jobs:
           # env.ANDROID_SIGN_TOOL_VERSION is set by Step "Setup sign tool version variable"
           BUILD_TOOLS_VERSION: ${{ env.ANDROID_SIGN_TOOL_VERSION }}
 
-      - name: Name the signed APK like the other packages
-        # sign-android-release writes <name>-signed.apk; the published name has no suffix.
-        if: env.ANDROID_SIGNING_KEY != null
-        id: signed-name
-        shell: bash
-        run: |
-          f="${{ steps.sign-rustdesk.outputs.signedReleaseFile }}"
-          out="$f"
-          case "$f" in
-            *-signed.apk) out="${f%-signed.apk}.apk"; mv "$f" "$out";;
-          esac
-          test -f "$out"
-          echo "file=$out" >> "$GITHUB_OUTPUT"
-
       - name: Upload Artifacts
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ env.RD_APP_NAME }}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}.apk
-          path: ${{ steps.signed-name.outputs.file }}
+          name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
+          path: ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
 
       - name: Publish signed apk package
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ${{ steps.signed-name.outputs.file }}
+            ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
 
       - name: Publish unsigned apk package
         if: env.ANDROID_SIGNING_KEY == null && env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            signed-apk/${RD_APP_NAME,,}-${{ env.TAG_NAME }}-${{ matrix.job.arch }}.apk
+            signed-apk/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
 
   build-rustdesk-android-universal:
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
-    if: ${{ inputs.upload-artifact && inputs.android }}
+    if: ${{ inputs.upload-artifact }}
     runs-on: ubuntu-24.04
     env:
       reltype: release
@@ -1889,12 +1798,6 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
-
-      - name: Stamp the release version
-        shell: bash
-        run: |
-          python3 res/set_version.py "${{ inputs.upload-tag }}"
-          tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
 
       - name: Install flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -1965,7 +1868,7 @@ jobs:
           flutter build apk "--${{ env.reltype }}" --target-platform android-arm64,android-arm,android-x64${{ env.x86_target }}
           popd
           mkdir -p signed-apk
-          mv ./flutter/build/app/outputs/flutter-apk/app-${{ env.reltype }}.apk signed-apk/${RD_APP_NAME,,}-${{ env.TAG_NAME }}-universal${{ env.suffix }}.apk
+          mv ./flutter/build/app/outputs/flutter-apk/app-${{ env.reltype }}.apk signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
       # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
       - name: Setup sign tool version variable
@@ -1989,47 +1892,32 @@ jobs:
           # env.ANDROID_SIGN_TOOL_VERSION is set by Step "Setup sign tool version variable"
           BUILD_TOOLS_VERSION: ${{ env.ANDROID_SIGN_TOOL_VERSION }}
 
-      - name: Name the signed APK like the other packages
-        # sign-android-release writes <name>-signed.apk; the published name has no suffix.
-        if: env.ANDROID_SIGNING_KEY != null
-        id: signed-name
-        shell: bash
-        run: |
-          f="${{ steps.sign-rustdesk.outputs.signedReleaseFile }}"
-          out="$f"
-          case "$f" in
-            *-signed.apk) out="${f%-signed.apk}.apk"; mv "$f" "$out";;
-          esac
-          test -f "$out"
-          echo "file=$out" >> "$GITHUB_OUTPUT"
-
       - name: Upload Artifacts
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ env.RD_APP_NAME }}-${{ env.TAG_NAME }}-universal.apk
-          path: ${{ steps.signed-name.outputs.file }}
+          name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
+          path: ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
 
       - name: Publish signed apk package
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ${{ steps.signed-name.outputs.file }}
+            ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
 
       - name: Publish unsigned apk package
         if: env.ANDROID_SIGNING_KEY == null && env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            signed-apk/${RD_APP_NAME,,}-${{ env.TAG_NAME }}-universal${{ env.suffix }}.apk
+            signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
   build-rustdesk-linux:
-    if: ${{ !inputs.windows-only }}
     needs: [generate-bridge]
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
@@ -2337,7 +2225,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             rustdesk-*.deb
@@ -2373,7 +2261,7 @@ jobs:
         if: matrix.job.arch == 'x86_64' && env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             res/rustdesk-${{ env.VERSION }}*.zst
@@ -2384,7 +2272,6 @@ jobs:
   # old for it. A separate job rather than a matrix entry of build-rustdesk-linux: appimage and
   # flatpak need that job, and a failure here must not skip them.
   build-rustdesk-linux-drm:
-    if: ${{ !inputs.windows-only }}
     needs: [generate-bridge]
     name: build rustdesk linux drm x86_64
     runs-on: ubuntu-22.04
@@ -2689,7 +2576,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             ${{ env.DRM_DEB }}
@@ -2704,7 +2591,7 @@ jobs:
           path: ${{ env.DRM_DEB }}
 
   build-rustdesk-linux-sciter:
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact }}
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
@@ -2934,7 +2821,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.deb
@@ -2950,7 +2837,7 @@ jobs:
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact }}
     strategy:
       fail-fast: false
       matrix:
@@ -2994,7 +2881,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             ./appimage/rustdesk-${{ env.VERSION }}-*.AppImage
@@ -3005,7 +2892,7 @@ jobs:
       - build-rustdesk-linux
       - build-rustdesk-linux-sciter
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
+    if: ${{ inputs.upload-artifact }}
     strategy:
       fail-fast: false
       matrix:
@@ -3079,37 +2966,10 @@ jobs:
       - name: Publish flatpak package
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             flatpak/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.flatpak
-
-  release-notes:
-    # Adds SHA256SUMS.txt and the install instructions to the release once the packages are up.
-    # It also runs when the Android jobs were skipped; it only needs the Windows build to have worked.
-    name: release notes and checksums
-    needs: [build-for-windows-flutter, build-rustdesk-android, build-rustdesk-android-universal, build-for-macOS]
-    if: ${{ !cancelled() && inputs.upload-artifact && needs.build-for-windows-flutter.result == 'success' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Checksums and install notes
-        shell: bash
-        run: |
-          mkdir rel
-          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir rel \
-            --pattern '*.exe' --pattern '*.msi' --pattern '*.apk' --pattern '*.dmg'
-          python3 res/release_notes.py sums rel
-          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body > body.txt
-          python3 res/release_notes.py body rel body.txt > new-body.txt
-          gh release upload "$TAG_NAME" rel/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
-          gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --notes-file new-body.txt
 
   build-rustdesk-web:
     if: False
@@ -3191,7 +3051,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
             flutter/build/rustdesk-${{ env.VERSION }}-${{ env.RELEASE_NAME }}.tar.gz

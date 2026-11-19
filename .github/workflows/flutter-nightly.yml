@@ -1,15 +1,10 @@
 name: Flutter Nightly Build
 
 on:
+  schedule:
+    # schedule build every night
+    - cron: "0 0 * * *"
   workflow_dispatch:
-    inputs:
-      windows-only:
-        description: "Build only the Windows portable .exe (uncheck to build every platform)"
-        type: boolean
-        default: true
-
-permissions:
-  contents: write
 
 jobs:
   run-flutter-nightly-build:
@@ -18,6 +13,3 @@ jobs:
     with:
       upload-artifact: true
       upload-tag: "nightly"
-      windows-only: ${{ github.event_name != 'workflow_dispatch' || inputs.windows-only }}
-      android: false
-      macos: false

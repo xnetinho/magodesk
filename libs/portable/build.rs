@@ -9,14 +9,6 @@ fn main() {
                 winapi::um::winnt::SUBLANG_ENGLISH_US,
             ))
             .set_manifest_file("../../res/manifest.xml");
-        // Rebranded builds: the self-extracting exe must not claim to be RustDesk.
-        if let Some(name) = option_env!("RD_APP_NAME").filter(|n| !n.trim().is_empty()) {
-            let name = name.trim();
-            res.set("ProductName", name)
-                .set("InternalName", name)
-                .set("FileDescription", &format!("{name} Remote Desktop"))
-                .set("OriginalFilename", &format!("{name}.exe"));
-        }
         match res.compile() {
             Err(e) => {
                 write!(std::io::stderr(), "{}", e).unwrap();

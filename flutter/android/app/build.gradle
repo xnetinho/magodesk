@@ -22,9 +22,6 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-// RD_APP_NAME is the same product name the desktop builds use; it renames the visible app.
-def rdAppName = System.getenv('RD_APP_NAME') ?: 'MagoDesk'
-
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
 if (flutterVersionCode == null) {
     flutterVersionCode = '1'
@@ -94,10 +91,6 @@ android {
         main.proto.includes += "message.proto"
     }
 
-    buildFeatures {
-        buildConfig true
-    }
-
     compileOptions {
         coreLibraryDesugaringEnabled true
         targetCompatibility JavaVersion.VERSION_1_8
@@ -106,12 +99,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        // The code keeps the upstream namespace above (only the ffi package must not move);
-        // the installed identity is the app id, so it must differ from the stock RustDesk.
-        applicationId "br.com.diomedes.magodesk"
-        manifestPlaceholders = [appLabel: rdAppName, uriScheme: rdAppName.toLowerCase()]
-        buildConfigField "String", "RD_APP_NAME", "\"${rdAppName}\""
-        resValue "string", "app_name", rdAppName
+        applicationId "com.carriez.flutter_hbb"
         minSdkVersion 22
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()

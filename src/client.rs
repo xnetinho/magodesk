@@ -2917,7 +2917,7 @@ impl LoginConfigHandler {
         conn_token: Option<String>,
         login_method: &str,
     ) {
-        let mut id = crate::captive::peer_id(&id).to_owned();
+        let mut id = id;
         if id.contains("@") {
             let mut v = id.split("@");
             let raw_id: &str = v.next().unwrap_or_default();

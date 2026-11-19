@@ -653,9 +653,9 @@ class _DesktopTabState extends State<DesktopTab>
                         ),
                         Offstage(
                             offstage: !showTitle,
-                            child: Text(
-                              appName,
-                              style: const TextStyle(fontSize: 13),
+                            child: const Text(
+                              "RustDesk",
+                              style: TextStyle(fontSize: 13),
                             ).marginOnly(left: 2))
                       ]).marginOnly(
                         left: 5,

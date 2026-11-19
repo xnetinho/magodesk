@@ -928,9 +928,9 @@ async fn handle(data: Data, stream: &mut Connection) {
             Some(data) => {
                 let _nat = CheckTestNatType::new();
                 if data.proxy.is_empty() {
-                    crate::captive::set_socks(None);
+                    Config::set_socks(None);
                 } else {
-                    crate::captive::set_socks(Some(data));
+                    Config::set_socks(Some(data));
                 }
                 RendezvousMediator::restart();
                 log::info!("socks updated");
@@ -2101,7 +2101,7 @@ async fn get_socks_(ms_timeout: u64) -> ResultType<Option<config::Socks5Server>>
     let mut c = connect(ms_timeout, "").await?;
     c.send(&Data::Socks(None)).await?;
     if let Some(Data::Socks(value)) = c.next_timeout(ms_timeout).await? {
-        crate::captive::set_socks(value.clone());
+        Config::set_socks(value.clone());
         Ok(value)
     } else {
         Ok(Config::get_socks())
@@ -2120,7 +2120,7 @@ pub async fn get_socks() -> Option<config::Socks5Server> {
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_socks(value: config::Socks5Server) -> ResultType<()> {
     let _nat = CheckTestNatType::new();
-    crate::captive::set_socks(if value.proxy.is_empty() {
+    Config::set_socks(if value.proxy.is_empty() {
         None
     } else {
         Some(value.clone())
@@ -2136,7 +2136,7 @@ async fn get_socks_ws_(ms_timeout: u64) -> ResultType<(Option<config::Socks5Serv
     let mut c = connect(ms_timeout, "").await?;
     c.send(&Data::SocksWs(None)).await?;
     if let Some(Data::SocksWs(Some(value))) = c.next_timeout(ms_timeout).await? {
-        crate::captive::set_socks(value.0.clone());
+        Config::set_socks(value.0.clone());
         Config::set_option(OPTION_ALLOW_WEBSOCKET.to_string(), value.1.clone());
         Ok(*value)
     } else {

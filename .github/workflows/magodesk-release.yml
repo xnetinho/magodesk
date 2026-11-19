@@ -1,0 +1,33 @@
+name: MagoDesk release
+
+# Runs when a release is published (draft -> Publish, or created directly).
+#   vX.Y.Z      final release
+#   vX.Y.Z-rcN  test build: publish it as a pre-release; the build keeps that flag
+# The packages are attached to the release itself: <app>-<tag>-<arch>.<ext>
+# Needs the secrets RD_HOST and RD_KEY and the variable RD_APP_NAME (see magodesk/CAPTIVE.md).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)build and attach the packages to"
+        required: true
+        type: string
+      windows-only:
+        description: "Build only the Windows packages (uncheck to also build Android and macOS)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/magodesk-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: ${{ github.event.release.tag_name || inputs.tag }}
+      android: ${{ github.event_name != 'workflow_dispatch' || !inputs.windows-only }}
+      macos: ${{ github.event_name != 'workflow_dispatch' || !inputs.windows-only }}

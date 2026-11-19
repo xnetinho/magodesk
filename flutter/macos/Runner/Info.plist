@@ -26,10 +26,10 @@
 			<key>CFBundleURLIconFile</key>
 			<string></string>
 			<key>CFBundleURLName</key>
-			<string>$(RD_BUNDLE_ID)</string>
+			<string>com.carriez.rustdesk</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>$(RD_URL_SCHEME)</string>
+				<string>rustdesk</string>
 			</array>
 		</dict>
 	</array>

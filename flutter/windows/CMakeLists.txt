@@ -4,14 +4,7 @@ project(rustdesk LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-# RD_APP_NAME comes from the environment so a rebranded build produces <name>.exe.
-if(DEFINED ENV{RD_APP_NAME} AND NOT "$ENV{RD_APP_NAME}" STREQUAL "")
-  set(BINARY_NAME "$ENV{RD_APP_NAME}")
-  set(RD_PRODUCT_NAME "$ENV{RD_APP_NAME}")
-else()
-  set(BINARY_NAME "rustdesk")
-  set(RD_PRODUCT_NAME "RustDesk")
-endif()
+set(BINARY_NAME "rustdesk")
 
 # Explicitly opt into modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

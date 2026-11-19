@@ -4,7 +4,7 @@ Este fork compila um cliente que aponta sempre para um único servidor, sem troc
 
 ## Como é configurado
 
-Lidos na compilação por `option_env!` em `src/captive.rs` (Settings → Secrets and variables → Actions):
+Lidos na compilação por `option_env!` em `magodesk/captive.rs` (Settings → Secrets and variables → Actions):
 
 | Nome | Tipo | Valor |
 |---|---|---|
@@ -37,7 +37,7 @@ Depois que os pacotes sobem, o job `release-notes` do workflow:
 - gera `SHA256SUMS.txt` com o hash de cada `.exe`, `.msi` e `.apk` e o anexa à release;
 - acrescenta à descrição da release o passo a passo de instalação e uma tabela com os hashes.
 
-O texto que você escrever na descrição é preservado: o job só reescreve o bloco entre `<!-- magodesk-install:begin -->` e `<!-- magodesk-install:end -->`, então rodar de novo substitui o bloco em vez de duplicá-lo. O código está em `res/release_notes.py` (`sums` e `body`).
+O texto que você escrever na descrição é preservado: o job só reescreve o bloco entre `<!-- magodesk-install:begin -->` e `<!-- magodesk-install:end -->`, então rodar de novo substitui o bloco em vez de duplicá-lo. O código está em `magodesk/release_notes.py` (`sums` e `body`).
 
 Conferir um arquivo baixado, no PowerShell: `Get-FileHash .\magodesk-<versão>-x86_64.exe -Algorithm SHA256`.
 
@@ -47,7 +47,7 @@ Sem conta Apple paga (US$ 99/ano), o app **não tem** Developer ID nem notariza�
 
 Se um dia houver os secrets `MACOS_P12_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_CODESIGN_IDENTITY` e `MACOS_NOTARIZE_JSON`, o workflow volta ao caminho do upstream (Developer ID + notarização com `rcodesign`) e o passo ad hoc é pulado.
 
-- **Marca:** `res/branding.py "$RD_APP_NAME"` roda no CI antes do build e grava nome do `.app`, `PRODUCT_NAME`, identificador `br.com.diomedes.<app>` e esquema de link (`magodesk://`) no `AppInfo.xcconfig` e no `Cargo.toml`; o `Info.plist` lê as variáveis. É estrito: se um merge do upstream mover um desses textos, ou se a ligação do `captive` sumir, o build **falha** em vez de gerar um app com a identidade do RustDesk. `--check` mostra o que mudaria sem escrever.
+- **Marca:** `magodesk/branding.py` roda em todo job que compila, antes do build (veja "Como o fork é organizado"). No macOS grava `PRODUCT_NAME`, o identificador `<prefixo>.<app>` e o esquema de link (`magodesk://`).
 - **Arquivos:** `magodesk-<tag>-x86_64.dmg` e `magodesk-<tag>-aarch64.dmg`. O `x86_64` roda em Mac Intel; o `aarch64`, em Apple Silicon.
 - **Permissões:** o app precisa de Acessibilidade e Gravação de Tela. Como a assinatura ad hoc muda a cada versão, o macOS pode pedir essas permissões de novo depois de uma atualização.
 - **Quando roda:** só com release publicada (ou disparo manual com `windows-only=false`). Não compila nem roda no nightly.
@@ -59,7 +59,7 @@ Se um dia houver os secrets `MACOS_P12_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_COD
 
 ## Versão e release
 
-A **tag define a versão**. `res/set_version.py <tag>` grava a versão em `Cargo.toml`, `libs/portable/Cargo.toml`, `Cargo.lock` e `flutter/pubspec.yaml` antes de cada build; o sufixo `-rcN` fica só na tag e nos nomes dos arquivos, porque o binário, o MSI e o Flutter exigem `X.Y.Z` numérico. A base do produto é `1.0.0`.
+A **tag define a versão**. `magodesk/set_version.py <tag>` grava a versão em `Cargo.toml`, `libs/portable/Cargo.toml`, `Cargo.lock` e `flutter/pubspec.yaml` antes de cada build; o sufixo `-rcN` fica só na tag e nos nomes dos arquivos, porque o binário, o MSI e o Flutter exigem `X.Y.Z` numérico. A base do produto é `1.0.0`.
 
 | Tag | Uso | Release | Versão no app |
 |---|---|---|---|
@@ -70,7 +70,7 @@ A **tag define a versão**. `res/set_version.py <tag>` grava a versão em `Cargo
 
 ### `versionCode` do Android
 
-`res/set_version.py` calcula a base `MAJOR*1000000 + MINOR*10000 + PATCH*100 + (rcN, ou 99 na final)`. O Flutter ainda **soma um prefixo por arquitetura** nos APKs separados (`--split-per-abi`): armv7 +1000, arm64 +2000, x86 +3000, x86_64 +4000; o universal não soma nada. Valores reais (conferidos nos APKs de `v1.0.0-rc1`):
+`magodesk/set_version.py` calcula a base `MAJOR*1000000 + MINOR*10000 + PATCH*100 + (rcN, ou 99 na final)`. O Flutter ainda **soma um prefixo por arquitetura** nos APKs separados (`--split-per-abi`): armv7 +1000, arm64 +2000, x86 +3000, x86_64 +4000; o universal não soma nada. Valores reais (conferidos nos APKs de `v1.0.0-rc1`):
 
 | Tag | armv7 | arm64 | x86_64 | universal |
 |---|---|---|---|---|
@@ -87,7 +87,7 @@ Na **mesma arquitetura** a ordem rc1 < rc2 < final < próximo patch vale, e o An
 
 ## Nomes dos arquivos
 
-O build roda quando uma release é **publicada** (`.github/workflows/flutter-tag.yml`) e anexa os pacotes à própria release. Padrão: `<app em minúsculas>-<TAG>-<arquitetura>.<extensão>`.
+O build roda quando uma release é **publicada** (`.github/workflows/magodesk-release.yml`) e anexa os pacotes à própria release. Padrão: `<app em minúsculas>-<TAG>-<arquitetura>.<extensão>`.
 
 | Plataforma | Exemplo |
 |---|---|
@@ -103,7 +103,7 @@ Passo a passo de um teste:
 gh release create v1.0.0-rc1 --prerelease --target master --title "v1.0.0-rc1" --notes "teste"
 ```
 
-`gh release create` cria a tag a partir de `master` e publica a release. Se o build não disparar sozinho, use o disparo manual: `gh workflow run flutter-tag.yml -f tag=v1.0.0-rc1 -f windows-only=false`.
+`gh release create` cria a tag a partir de `master` e publica a release. Se o build não disparar sozinho, use o disparo manual: `gh workflow run magodesk-release.yml -f tag=v1.0.0-rc1 -f windows-only=false`.
 
 ## Android
 
@@ -117,3 +117,41 @@ gh release create v1.0.0-rc1 --prerelease --target master --title "v1.0.0-rc1" -
 `flutter-nightly.yml` continua disponível só como disparo manual.
 
 Os testes de `captive.rs` rodam com `cargo test` no crate (usam o `hbb_common` do submódulo).
+
+## Como o fork é organizado
+
+**Nenhum arquivo do RustDesk é editado.** O fork é o upstream mais estes arquivos novos, todos em `magodesk/` (exceto os dois workflows, que o GitHub só aceita em `.github/workflows/`):
+
+| Arquivo | O que é |
+|---|---|
+| `magodesk/branding.py` | o motor: valida as entradas, aplica as regras e carimba a versão |
+| `magodesk/rules.py` | as 48 regras (arquivo, texto do upstream, texto novo): Windows, Android, macOS, ligação do cliente cativo |
+| `magodesk/captive.rs` | o cliente travado no servidor; o `rules.py` o liga em `src/lib.rs` com `#[path]` |
+| `magodesk/make_workflow.py` | gera `.github/workflows/magodesk-build.yml` a partir do `flutter-build.yml` do upstream |
+| `magodesk/set_version.py`, `release_notes.py` | versão pela tag; SHA-256 e instruções na release |
+| `magodesk/tests/` | testa o motor numa cópia limpa |
+| `.github/workflows/magodesk-release.yml` | o gatilho: release publicada, ou execução manual |
+
+### Entradas do `branding.py`
+| Origem | Nome | Observação |
+|---|---|---|
+| Secret | `RD_HOST`, `RD_KEY` | servidor e chave; só validados aqui (o compilador lê por `option_env!`), nunca impressos |
+| Variável | `RD_APP_NAME` | letras e dígitos |
+| Variável (opcional) | `RD_ANDROID_ID` | padrão `br.com.diomedes.<app>` |
+| Variável (opcional) | `RD_BUNDLE_PREFIX` | padrão `br.com.diomedes`; o bundle do macOS é `<prefixo>.<app>` |
+
+Se uma entrada faltar ou for inválida, o build para antes de compilar.
+
+### Sync Fork
+1. **Sync Fork** no GitHub. Não há conflito: nenhum arquivo do upstream foi editado.
+2. `python3 magodesk/make_workflow.py` e faça o commit do `magodesk-build.yml`. Se o upstream mudou um bloco que o gerador espera, ele diz qual.
+3. Num clone limpo, com as 3 variáveis de ambiente: `python3 magodesk/branding.py --check`. Cada regra que não serve mais aparece com o arquivo.
+4. Desative no GitHub os workflows novos do upstream (`gh workflow list --all`, `gh workflow disable`): eles disparam sozinhos e mandam e-mail de falha.
+5. Publique um `-rcN` de teste.
+
+Os testes do motor: `python3 -m unittest discover -s magodesk/tests`.
+
+### Limites
+- Nenhum build é compilado localmente; só o CI prova que o app funciona.
+- O `captive.rs` depende de APIs do `hbb_common` (`Config`, `Socks5Server`, `check_ws`). Se o upstream as mudar, o build do Rust falha no CI.
+- O gerador e o motor só reconhecem o que está escrito neles: um problema novo no upstream que não toque nas âncoras passa despercebido até o CI.
