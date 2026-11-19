@@ -7,7 +7,7 @@
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = RustDesk
 
-// Rewritten by res/set_macos_brand.py on MagoDesk builds; the defaults keep the stock RustDesk.
+// Rewritten by res/branding.py on MagoDesk builds; the defaults keep the stock RustDesk.
 RD_BUNDLE_ID = com.carriez.rustdesk
 RD_URL_SCHEME = rustdesk
 

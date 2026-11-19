@@ -999,7 +999,7 @@ jobs:
         run: |
           python3 res/set_version.py "${{ inputs.upload-tag }}"
           tag="${{ inputs.upload-tag }}"; tag="${tag#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
-          python3 res/set_macos_brand.py "$RD_APP_NAME"
+          python3 res/branding.py "$RD_APP_NAME"
 
       - name: Import the codesign cert
         if: env.MACOS_P12_BASE64 != null

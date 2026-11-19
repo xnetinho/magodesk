@@ -47,7 +47,7 @@ Sem conta Apple paga (US$ 99/ano), o app **não tem** Developer ID nem notariza�
 
 Se um dia houver os secrets `MACOS_P12_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_CODESIGN_IDENTITY` e `MACOS_NOTARIZE_JSON`, o workflow volta ao caminho do upstream (Developer ID + notarização com `rcodesign`) e o passo ad hoc é pulado.
 
-- **Marca:** `res/set_macos_brand.py "$RD_APP_NAME"` roda no CI antes do build e grava nome do `.app`, `PRODUCT_NAME`, identificador `br.com.diomedes.<app>` e esquema de link (`magodesk://`) no `AppInfo.xcconfig`, `Info.plist` (via variáveis) e `Cargo.toml`. Os plists do launchd (serviço e agente) são reescritos pelo programa em execução a partir de `APP_NAME` e do identificador do bundle (`correct_app_name` em `src/platform/macos.rs`). Removi o `DEVELOPMENT_TEAM` do upstream do projeto Xcode.
+- **Marca:** `res/branding.py "$RD_APP_NAME"` roda no CI antes do build e grava nome do `.app`, `PRODUCT_NAME`, identificador `br.com.diomedes.<app>` e esquema de link (`magodesk://`) no `AppInfo.xcconfig` e no `Cargo.toml`; o `Info.plist` lê as variáveis. É estrito: se um merge do upstream mover um desses textos, ou se a ligação do `captive` sumir, o build **falha** em vez de gerar um app com a identidade do RustDesk. `--check` mostra o que mudaria sem escrever.
 - **Arquivos:** `magodesk-<tag>-x86_64.dmg` e `magodesk-<tag>-aarch64.dmg`. O `x86_64` roda em Mac Intel; o `aarch64`, em Apple Silicon.
 - **Permissões:** o app precisa de Acessibilidade e Gravação de Tela. Como a assinatura ad hoc muda a cada versão, o macOS pode pedir essas permissões de novo depois de uma atualização.
 - **Quando roda:** só com release publicada (ou disparo manual com `windows-only=false`). Não compila nem roda no nightly.

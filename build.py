@@ -35,7 +35,7 @@ else:
 flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
 # Rebranded builds name the executable after RD_APP_NAME (see flutter/windows/CMakeLists.txt).
 app_exe_name = (os.environ.get('RD_APP_NAME') or 'rustdesk') + ('.exe' if windows else '')
-# macOS: the .app bundle is named after PRODUCT_NAME (see res/set_macos_brand.py)
+# macOS: the .app bundle is named after PRODUCT_NAME (see res/branding.py)
 mac_app_name = (os.environ.get('RD_APP_NAME') or 'RustDesk') + '.app'
 skip_cargo = False
 
