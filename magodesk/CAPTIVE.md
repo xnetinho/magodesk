@@ -21,6 +21,7 @@ A chave privada nunca entra aqui. Sem `RD_HOST` e `RD_KEY` o build não é cativ
 - Servidor, chave, `relay-server` e `api-server` (em `OVERWRITE_SETTINGS`).
 - Verificação e instalação de atualização do upstream.
 - O servidor no nome do `.exe` e o atalho `id@outroservidor` são ignorados.
+- **Login, agenda de endereços e grupos ficam desligados** (`disable-account=Y` em `HARD_SETTINGS`, a mesma tabela que o `custom.txt` de um cliente personalizado preenche). O `hbbs`/`hbbr` oficial não tem API de contas, então o botão "Login" só levaria a um formulário que nunca funciona. A opção some em todas as telas que o upstream já protege com `isDisableAccount`: configurações do desktop e do celular, barra de ferramentas e as abas de agenda e grupos. Para voltar a mostrar o login (por exemplo, com um servidor que tenha API), remova `hard_options()` de `magodesk/captive.rs`.
 
 ## Proxy e WebSocket
 

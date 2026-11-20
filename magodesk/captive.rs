@@ -48,6 +48,13 @@ fn locked_options(host: &str, key: &str) -> HashMap<String, String> {
     m
 }
 
+/// Hard settings, the table that `custom.txt` fills in a stock custom client (read by `config::is_disable_account`
+/// and friends). The server of the owner has no account API, so the login, the address book and the groups
+/// would only lead to a form that can never work.
+fn hard_options() -> HashMap<String, String> {
+    HashMap::from([("disable-account".to_owned(), "Y".to_owned())])
+}
+
 /// Proxy and network settings stay visible: companies behind a proxy need to type theirs.
 fn builtin_options() -> HashMap<String, String> {
     let mut m: HashMap<String, String> = [
@@ -106,6 +113,7 @@ pub fn apply() {
     // enable-check-update is read from the local config, the rest from the server one
     config::OVERWRITE_LOCAL_SETTINGS.write().unwrap().extend(locked);
     config::BUILTIN_SETTINGS.write().unwrap().extend(builtin_options());
+    config::HARD_SETTINGS.write().unwrap().extend(hard_options());
     sync_websocket();
 }
 
@@ -157,6 +165,13 @@ mod tests {
         assert_eq!(m["register-device"], "N");
         assert!(!m.contains_key("hide-proxy-settings"));
         assert!(!m.contains_key("hide-network-settings"));
+    }
+
+    #[test]
+    fn account_login_is_off() {
+        // only this test touches HARD_SETTINGS, so it does not race with the others
+        config::HARD_SETTINGS.write().unwrap().extend(hard_options());
+        assert!(config::is_disable_account());
     }
 
     #[test]
