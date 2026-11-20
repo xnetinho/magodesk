@@ -129,8 +129,10 @@ Os testes de `captive.rs` rodam com `cargo test` no crate (usam o `hbb_common` d
 | `magodesk/captive.rs` | o cliente travado no servidor; o `rules.py` o liga em `src/lib.rs` com `#[path]` |
 | `magodesk/make_workflow.py` | gera `.github/workflows/magodesk-build.yml` a partir do `flutter-build.yml` do upstream |
 | `magodesk/set_version.py`, `release_notes.py` | versão pela tag; SHA-256 e instruções na release |
+| `magodesk/check_upstream.py` | confere regras, workflow gerado e testes; usado pela verificação diária e pelo `preflight` |
 | `magodesk/tests/` | testa o motor numa cópia limpa |
-| `.github/workflows/magodesk-release.yml` | o gatilho: release publicada, ou execução manual |
+| `.github/workflows/magodesk-release.yml` | o gatilho: release publicada, ou execução manual; começa pelo `preflight` |
+| `.github/workflows/magodesk-check.yml` | a verificação diária e manual; só avisa por issue |
 
 ### Entradas do `branding.py`
 | Origem | Nome | Observação |
@@ -142,14 +144,18 @@ Os testes de `captive.rs` rodam com `cargo test` no crate (usam o `hbb_common` d
 
 Se uma entrada faltar ou for inválida, o build para antes de compilar.
 
-### Sync Fork
-1. **Sync Fork** no GitHub. Não há conflito: nenhum arquivo do upstream foi editado.
-2. `python3 magodesk/make_workflow.py` e faça o commit do `magodesk-build.yml`. Se o upstream mudou um bloco que o gerador espera, ele diz qual.
-3. Num clone limpo, com as 3 variáveis de ambiente: `python3 magodesk/branding.py --check`. Cada regra que não serve mais aparece com o arquivo.
-4. Desative no GitHub os workflows novos do upstream (`gh workflow list --all`, `gh workflow disable`): eles disparam sozinhos e mandam e-mail de falha.
-5. Publique um `-rcN` de teste.
+### Sync Fork (o que acontece e o que você faz)
+Nada constrói sozinho. O fluxo tem uma trava humana de propósito: se o upstream mudar algo que o script não sabe ajustar, o build não deve nascer quebrado.
 
-Os testes do motor: `python3 -m unittest discover -s magodesk/tests`.
+1. **Sync Fork** no GitHub. Não há conflito: nenhum arquivo do upstream foi editado.
+2. **Verificação automática, todo dia (06:17 UTC)** e sob demanda (*Actions → MagoDesk upstream check → Run workflow*): `magodesk-check.yml` roda `check_upstream.py`, que confere as regras do `branding.py`, o `magodesk-build.yml` gerado e os testes. Ele **só avisa**: nunca constrói e nunca altera o repositório.
+   - Tudo certo: nada acontece (o resumo da execução mostra o commit checado).
+   - Algo não serve mais: abre **uma issue** com o arquivo e a regra. Quando passa de novo, a issue é fechada sozinha.
+3. **Você decide quando construir**: publique uma release (`gh release create vX.Y.Z-rcN --prerelease`). O `preflight` do `magodesk-release.yml` repete a verificação **com os secrets reais** (`--real-inputs`) e para em segundos se algo falhar, antes de compilar.
+4. Se a verificação pedir, corrija `magodesk/rules.py`, ou rode `python3 magodesk/make_workflow.py` e faça o commit do `magodesk-build.yml`. O workflow não faz esse commit sozinho: o token padrão do GitHub não pode alterar `.github/workflows/`, e preferimos não guardar um token com essa permissão.
+5. **Teste nos aparelhos** antes de chamar uma versão de estável. A verificação não enxerga uma mudança de comportamento que compila e passa nas âncoras.
+
+Os workflows do upstream que disparam sozinhos (`ci`, `flutter-ci`, `fdroid`, `flutter-tag`, `flutter-nightly`, `update-webpki-roots`) ficam **desativados pelo GitHub** (`gh workflow disable`), e não apagados: apagar o arquivo voltaria como conflito no próximo Sync Fork. Se um Sync Fork trouxer um workflow novo do upstream, rode `gh workflow list --all` e desative o que dispara sozinho.
 
 ### Limites
 - Nenhum build é compilado localmente; só o CI prova que o app funciona.

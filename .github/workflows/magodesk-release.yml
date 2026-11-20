@@ -23,7 +23,26 @@ permissions:
   contents: write
 
 jobs:
+  # Stops in seconds, before any compilation, when the upstream code no longer fits our rules.
+  preflight:
+    name: preflight (branding rules, generated workflow, tests)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+      - name: Check
+        env:
+          RD_HOST: ${{ secrets.RD_HOST }}
+          RD_KEY: ${{ secrets.RD_KEY }}
+          RD_APP_NAME: ${{ vars.RD_APP_NAME }}
+        run: python3 magodesk/check_upstream.py --real-inputs
+
   build:
+    needs: [preflight]
     uses: ./.github/workflows/magodesk-build.yml
     secrets: inherit
     with:

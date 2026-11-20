@@ -1,0 +1,72 @@
+name: MagoDesk upstream check
+
+# Never builds and never changes the repository. It only tells you whether the upstream that is
+# in this fork right now can still be branded and built, and opens ONE issue when it cannot.
+#   - every day: after you press "Sync Fork" the next run looks at the new code
+#   - on demand: Actions > MagoDesk upstream check > Run workflow
+# The package build is yours to start (publish a release, see magodesk-release.yml).
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: magodesk-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Record the commit being checked
+        id: seen
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git log -1 --format='Checking %h %s' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the branding rules, the generated workflow and the tests
+        id: check
+        shell: bash
+        run: |
+          set +e
+          python3 magodesk/check_upstream.py --report report.md
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the issue when something no longer fits
+        if: steps.check.outputs.rc != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="MagoDesk: the upstream code no longer fits the branding rules"
+          body="$(printf 'Commit checked: `%s`\n\n%s\n\nFix `magodesk/rules.py` (or run `python3 magodesk/make_workflow.py` and commit the result), then run this workflow again. Do not publish a release until it passes.\n' "${{ steps.seen.outputs.sha }}" "$(cat report.md)")"
+          n="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close the issue when everything fits again
+        if: steps.check.outputs.rc == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="MagoDesk: the upstream code no longer fits the branding rules"
+          n="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          [ -z "$n" ] || gh issue close "$n" --comment "Fixed: all checks pass on \`${{ steps.seen.outputs.sha }}\`."
+
+      - name: Fail the run when a check failed
+        if: steps.check.outputs.rc != '0'
+        run: exit 1
