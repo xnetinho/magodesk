@@ -51,8 +51,9 @@ Se um dia houver os secrets `MACOS_P12_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_COD
 - **Marca:** `magodesk/branding.py` roda em todo job que compila, antes do build (veja "Como o fork é organizado"). No macOS grava `PRODUCT_NAME`, o identificador `<prefixo>.<app>` e o esquema de link (`magodesk://`).
 - **Arquivos:** `magodesk-<tag>-x86_64.dmg` e `magodesk-<tag>-aarch64.dmg`. O `x86_64` roda em Mac Intel; o `aarch64`, em Apple Silicon.
 - **Permissões:** o app precisa de Acessibilidade e Gravação de Tela. Como a assinatura ad hoc muda a cada versão, o macOS pode pedir essas permissões de novo depois de uma atualização.
-- **Quando roda:** só com release publicada (ou disparo manual com `windows-only=false`). Não compila nem roda no nightly.
-- **Limite:** nada disto foi compilado nem executado em um Mac. O iOS está **fora de escopo** (o job existe, mas não publica `.ipa`).
+- **Quando roda:** com release publicada, ou disparo manual com `windows-only=false`.
+- **Validado:** o `rc4` foi instalado e usado num Mac que já tinha o RustDesk oficial instalado, e funcionou. O MagoDesk usa identificador, pasta de configuração, pasta de logs, socket e serviços próprios, então convive com o RustDesk. Se os dois estiverem abertos, podem disputar a captura de tela e o mouse: feche um antes de abrir o outro.
+- **Limite:** o iOS está **fora de escopo** (o job do upstream existe, mas não é gerado aqui).
 
 ## Nome do produto (rebranding)
 
@@ -66,6 +67,7 @@ A **tag define a versão**. `magodesk/set_version.py <tag>` grava a versão em `
 |---|---|---|---|
 | `v1.0.0-rc1` | teste | **pre-release** | 1.0.0 |
 | `v1.0.0-rc2` | teste | pre-release | 1.0.0 |
+| `v1.0.0-rc3`, `v1.0.0-rc4` | teste | pre-release | 1.0.0 |
 | `v1.0.0` | final | release normal | 1.0.0 |
 | `v1.0.1` | final | release normal | 1.0.1 |
 
@@ -113,11 +115,11 @@ gh release create v1.0.0-rc1 --prerelease --target master --title "v1.0.0-rc1" -
 - O serviço pode subir no boot sem o Flutter. `Java_ffi_FFI_startServer` chama `captive::apply()` para que ele nunca registre no servidor público.
 - O aviso de golpe antes de compartilhar a tela mantém os 12 s, mesmo com `isCustomClient` verdadeiro.
 - Assinatura: o job usa os secrets `ANDROID_*`; o APK de teste e o final saem assinados com a mesma chave (alias `rustdesk`, titular `CN=RustDesk Diomedes`; o alias é só um rótulo interno, e trocá-lo mudaria a identidade de assinatura).
-- Verificado em `v1.0.0-rc1`: pacote `br.com.diomedes.magodesk`, nome `MagoDesk`, serviço `MagoDesk Input`, esquema `magodesk://`, `versionName` 1.0.0. Nenhum teste de execução em aparelho ainda.
+- Verificado abrindo o APK do `rc1` ao `rc4`: pacote `br.com.diomedes.magodesk`, nome `MagoDesk`, serviço `MagoDesk Input`, esquema `magodesk://`, mesma assinatura (SHA-256 `FD:A4:E1:07…`). O `rc4` foi instalado e usado num aparelho: **validado**.
 
-`flutter-nightly.yml` continua disponível só como disparo manual.
+O `flutter-nightly.yml` do upstream está desativado no GitHub; não há build noturno.
 
-Os testes de `captive.rs` rodam com `cargo test` no crate (usam o `hbb_common` do submódulo).
+Os testes de `captive.rs` usam o `hbb_common` e só rodam junto com a árvore compilada (no CI). Os de lógica pura (opções travadas, nome do app, WebSocket por proxy, login desligado) foram rodados num crate isolado com um `hbb_common` simulado.
 
 ## Como o fork é organizado
 
