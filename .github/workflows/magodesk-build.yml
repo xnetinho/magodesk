@@ -50,7 +50,6 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-binary-cache,readwrite"
   # vcpkg version: 2026.07.29
   # If we change the `VCPKG COMMIT_ID`, please remember:
   # 1. Call `$VCPKG_ROOT/vcpkg x-update-baseline` to update the baseline in `vcpkg.json`.
@@ -331,13 +330,20 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Point vcpkg at the binary cache folder
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP}/vcpkg-binary-cache"
+          mkdir -p "$dir"
+          echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"
+
       - name: Restore the vcpkg binary cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
 
       - name: Install vcpkg dependencies
         env:
@@ -784,13 +790,20 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Point vcpkg at the binary cache folder
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP}/vcpkg-binary-cache"
+          mkdir -p "$dir"
+          echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"
+
       - name: Restore the vcpkg binary cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
 
       - name: Install vcpkg dependencies
         run: |
@@ -1076,13 +1089,20 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Point vcpkg at the binary cache folder
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP}/vcpkg-binary-cache"
+          mkdir -p "$dir"
+          echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"
+
       - name: Restore the vcpkg binary cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.target }}-
 
       - name: Install vcpkg dependencies
         run: |

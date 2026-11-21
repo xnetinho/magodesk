@@ -19,21 +19,27 @@ def names(job):
 class VcpkgCache(unittest.TestCase):
     def test_the_removed_x_gha_provider_is_gone(self):
         self.assertNotIn("x-gha", BUILD)
-        self.assertIn('VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-binary-cache,readwrite"', BUILD)
+        # `runner` is not a context of the workflow-level env, so the value is exported by a step of each job
+        self.assertNotIn("runner.temp }}/vcpkg-binary-cache,readwrite", BUILD)
+        self.assertEqual(BUILD.count('echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"'), 3)
+        self.assertNotRegex(BUILD, r"(?m)^  VCPKG_BINARY_SOURCES:")
 
     def test_every_vcpkg_job_restores_the_cache_between_setup_and_install(self):
         for job in ("build-for-windows-flutter", "build-for-macOS", "build-rustdesk-android"):
             n = names(job)
-            a, b, c = (n.index(x) for x in ("Setup vcpkg with Github Actions binary cache",
-                                             "Restore the vcpkg binary cache", "Install vcpkg dependencies"))
-            self.assertTrue(a < b < c, job)
+            a, p, b, c = (n.index(x) for x in ("Setup vcpkg with Github Actions binary cache",
+                                                "Point vcpkg at the binary cache folder",
+                                                "Restore the vcpkg binary cache", "Install vcpkg dependencies"))
+            self.assertTrue(a < p < b < c, job)
 
     def test_the_cache_key_changes_with_the_vcpkg_commit_and_the_target(self):
         keys = re.findall(r"key: (vcpkg-bin-[^\n]+)", BUILD)
         self.assertEqual(len(keys), 3)
         for k in keys:
             self.assertIn("env.VCPKG_COMMIT_ID", k)
-            self.assertIn("matrix.job.vcpkg-triplet || matrix.job.target", k)
+        # the Android matrix has no vcpkg-triplet, so it keys on the cargo target
+        self.assertEqual(sorted(re.findall(r"matrix\.job\.(vcpkg-triplet|target)\b", "\n".join(keys))),
+                         ["target", "vcpkg-triplet", "vcpkg-triplet"])
 
     def test_the_cache_action_is_pinned_to_a_commit(self):
         for ref in re.findall(r"uses: actions/cache@(\S+)", BUILD):

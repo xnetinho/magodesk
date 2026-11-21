@@ -31,13 +31,20 @@ STAMP = '''      - name: Stamp the version and brand the tree
 '''
 # vcpkg removed the x-gha provider: the binary packages go to a plain folder, saved by actions/cache. The key holds the
 # vcpkg commit and the job's triplet/target, so it only changes when the libraries do.
-VCPKG_CACHE = '''      - name: Restore the vcpkg binary cache
+VCPKG_CACHE = '''      - name: Point vcpkg at the binary cache folder
+        shell: bash
+        run: |
+          dir="${RUNNER_TEMP}/vcpkg-binary-cache"
+          mkdir -p "$dir"
+          echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"
+
+      - name: Restore the vcpkg binary cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.@TRIPLET@ }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.@TRIPLET@ }}-
 
 '''
 
@@ -121,7 +128,8 @@ EDITS = [
     ("SignOutput/rustdesk-*.msi", "SignOutput/*.msi", 2),
     ("SignOutput/rustdesk-*.exe", "SignOutput/*.exe", 1),
     # ---- vcpkg binary cache: x-gha was removed from vcpkg, use the files provider
-    ('VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"', 'VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-binary-cache,readwrite"', 1),
+    # `runner` is not a context of the workflow-level env: the value is set per job, by VCPKG_CACHE below
+    ('  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"\n', '', 1),
     # ---- Windows: the Flutter exe is named after RD_APP_NAME (CMake, see rules.py)
     ('& ".\\rustdesk\\rustdesk.exe" --version', '& ".\\rustdesk\\$env:RD_APP_NAME.exe" --version', 1),
     ("-e rustdesk.exe -l 11 -t", '-e "${RD_APP_NAME}.exe" -l 11 -t', 1),
@@ -143,8 +151,11 @@ EDITS = [
 # Blocks that need more than a replacement: (anchor, text inserted BEFORE it, expected count)
 INSERT_BEFORE = [
     ("      - name: Upload Artifacts\n        if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'\n", SIGNED_NAME, 2),
-    ("      - name: Install vcpkg dependencies\n", VCPKG_CACHE, 3),
 ]
+
+# Matrix key that names the vcpkg triplet, per job (the Android matrix has no vcpkg-triplet, only the cargo target).
+VCPKG_TRIPLET_KEY = {"build-for-windows-flutter": "vcpkg-triplet", "build-for-macOS": "vcpkg-triplet",
+                     "build-rustdesk-android": "target"}
 
 
 def split_jobs(text):
@@ -233,6 +244,15 @@ def generate(src_text):
         if got != n:
             fail(f"edit not applied as expected ({got}x found, {n}x wanted): {old.strip()[:70]!r}")
         text = text.replace(old, new)
+    for job, key in VCPKG_TRIPLET_KEY.items():
+        i = text.index(f"\n  {job}:\n")
+        j = text.index("\n  ", i + 5)
+        while not re.match(r"\n  [A-Za-z0-9_-]+:\n", text[j:j + 80]):
+            j = text.index("\n  ", j + 3)
+        body, anchor = text[i:j], "      - name: Install vcpkg dependencies\n"
+        if body.count(anchor) != 1:
+            fail(f"{job}: 'Install vcpkg dependencies' found {body.count(anchor)}x, wanted 1x")
+        text = text[:i] + body.replace(anchor, VCPKG_CACHE.replace("@TRIPLET@", key) + anchor) + text[j:]
     for old, ins, n in INSERT_BEFORE:
         if ins is None:
             continue
