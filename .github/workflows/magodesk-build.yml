@@ -50,7 +50,7 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-binary-cache,readwrite"
   # vcpkg version: 2026.07.29
   # If we change the `VCPKG COMMIT_ID`, please remember:
   # 1. Call `$VCPKG_ROOT/vcpkg x-update-baseline` to update the baseline in `vcpkg.json`.
@@ -330,6 +330,14 @@ jobs:
           vcpkgDirectory: C:\vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
 
       - name: Install vcpkg dependencies
         env:
@@ -776,6 +784,14 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+
       - name: Install vcpkg dependencies
         run: |
           if ! $VCPKG_ROOT/vcpkg \
@@ -1059,6 +1075,14 @@ jobs:
           vcpkgDirectory: /opt/artifacts/vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
 
       - name: Install vcpkg dependencies
         run: |

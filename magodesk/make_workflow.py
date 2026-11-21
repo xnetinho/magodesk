@@ -29,6 +29,18 @@ STAMP = '''      - name: Stamp the version and brand the tree
           echo "APP_LOWER=$(printf '%s' "$RD_APP_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
 '''
+# vcpkg removed the x-gha provider: the binary packages go to a plain folder, saved by actions/cache. The key holds the
+# vcpkg commit and the job's triplet/target, so it only changes when the libraries do.
+VCPKG_CACHE = '''      - name: Restore the vcpkg binary cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet || matrix.job.target }}-
+
+'''
+
 SIGNED_NAME = '''      - name: Name the signed APK like the other packages
         # sign-android-release writes <name>-signed.apk; the published name has no suffix.
         if: env.ANDROID_SIGNING_KEY != null
@@ -108,6 +120,8 @@ EDITS = [
     ("rustdesk-${{ env.VERSION }}", "${{ env.APP_LOWER }}-${{ env.TAG_NAME }}", 21),
     ("SignOutput/rustdesk-*.msi", "SignOutput/*.msi", 2),
     ("SignOutput/rustdesk-*.exe", "SignOutput/*.exe", 1),
+    # ---- vcpkg binary cache: x-gha was removed from vcpkg, use the files provider
+    ('VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"', 'VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-binary-cache,readwrite"', 1),
     # ---- Windows: the Flutter exe is named after RD_APP_NAME (CMake, see rules.py)
     ('& ".\\rustdesk\\rustdesk.exe" --version', '& ".\\rustdesk\\$env:RD_APP_NAME.exe" --version', 1),
     ("-e rustdesk.exe -l 11 -t", '-e "${RD_APP_NAME}.exe" -l 11 -t', 1),
@@ -129,6 +143,7 @@ EDITS = [
 # Blocks that need more than a replacement: (anchor, text inserted BEFORE it, expected count)
 INSERT_BEFORE = [
     ("      - name: Upload Artifacts\n        if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'\n", SIGNED_NAME, 2),
+    ("      - name: Install vcpkg dependencies\n", VCPKG_CACHE, 3),
 ]
 
 

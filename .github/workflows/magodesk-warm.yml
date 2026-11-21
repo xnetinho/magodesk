@@ -1,0 +1,64 @@
+name: MagoDesk cache warm-up
+
+# Builds everything exactly like a release, but publishes NOTHING (upload-artifact: false), so that the
+# compiler and vcpkg caches are created in the scope of the default branch. GitHub only lets a run read
+# caches from its own branch/tag or from the default branch; every release is a new tag, so without this
+# the caches of one release were never visible to the next.
+#   - on demand: Actions > MagoDesk cache warm-up > Run workflow  (run it on master)
+#   - weekly, because GitHub deletes caches that were not read for 7 days
+# It needs the same secrets and variable as a release (RD_HOST, RD_KEY, RD_APP_NAME).
+on:
+  schedule:
+    - cron: "43 5 * * 0"
+  workflow_dispatch:
+    inputs:
+      windows-only:
+        description: "Warm only the Windows caches (uncheck to warm Android and macOS too)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magodesk-warm
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    # A warm-up on a tag or a feature branch would create caches nobody can read: refuse it.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only on the default branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::run this workflow on the default branch (${{ github.event.repository.default_branch }}), not on ${{ github.ref }}"
+            exit 1
+          fi
+
+  preflight:
+    # The same check as a release: fails in seconds if a secret is missing or an upstream rule no longer fits.
+    needs: [guard]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+      - name: Check
+        env:
+          RD_HOST: ${{ secrets.RD_HOST }}
+          RD_KEY: ${{ secrets.RD_KEY }}
+          RD_APP_NAME: ${{ vars.RD_APP_NAME }}
+        run: python3 magodesk/check_upstream.py --real-inputs
+
+  build:
+    needs: [preflight]
+    uses: ./.github/workflows/magodesk-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: false
+      # a valid tag for the version stamp only; nothing is published with it
+      upload-tag: v0.0.1-rc1
+      android: ${{ github.event_name != 'workflow_dispatch' || !inputs.windows-only }}
+      macos: ${{ github.event_name != 'workflow_dispatch' || !inputs.windows-only }}
