@@ -99,7 +99,8 @@ EDITS = [
     ("      publish-update-metadata:\n        type: boolean\n        default: false\n",
      "      publish-update-metadata:\n        type: boolean\n        default: false\n"
      "      android:\n        type: boolean\n        default: false\n"
-     "      macos:\n        type: boolean\n        default: false\n", 1),
+     "      macos:\n        type: boolean\n        default: false\n"
+     "      run-tests:\n        type: boolean\n        default: false\n", 1),
     ('  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"\n',
      '  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"\n'
      "  # captive client: server and public key baked in at compile time (magodesk/captive.rs)\n"
@@ -123,6 +124,12 @@ EDITS = [
     ("  build-rustdesk-android:\n", "  build-rustdesk-android:\n    if: ${{ inputs.android }}\n", 1),
     ("    name: build rustdesk android universal apk\n    if: ${{ inputs.upload-artifact }}\n",
      "    name: build rustdesk android universal apk\n    if: ${{ inputs.upload-artifact && inputs.android }}\n", 1),
+    # ---- the upstream's own test steps (they run when upload-artifact is false) get a switch of their own: with the
+    #      captive settings applied, its network and key-exchange tests fail or hang for hours (the warm-up build never
+    #      needed them). Same text in the three steps, different conditions.
+    ("if: ${{ !inputs.upload-artifact && matrix.job.arch == 'x86_64' }}", "if: ${{ inputs.run-tests && matrix.job.arch == 'x86_64' }}", 1),
+    ("if: ${{ !inputs.upload-artifact && matrix.job.arch == 'aarch64' }}", "if: ${{ inputs.run-tests && matrix.job.arch == 'aarch64' }}", 1),
+    ("        if: ${{ !inputs.upload-artifact }}\n        working-directory: flutter\n", "        if: ${{ inputs.run-tests }}\n        working-directory: flutter\n", 1),
     # ---- pre-release follows the tag
     ("prerelease: true", "prerelease: ${{ env.IS_PRERELEASE == 'true' }}", 7),
     # ---- file names: <app>-<tag>-<arch>

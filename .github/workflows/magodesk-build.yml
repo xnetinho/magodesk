@@ -19,6 +19,9 @@ on:
       macos:
         type: boolean
         default: false
+      run-tests:
+        type: boolean
+        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -416,7 +419,7 @@ jobs:
 
       - name: Run the Rust tests
         # x86_64 only: the tests are the same code on arm64, and that runner is the slow one.
-        if: ${{ !inputs.upload-artifact && matrix.job.arch == 'x86_64' }}
+        if: ${{ inputs.run-tests && matrix.job.arch == 'x86_64' }}
         shell: bash
         run: |
           # The build's own features, so the tests see the code that ships.
@@ -781,7 +784,7 @@ jobs:
 
       - name: Run the Dart tests
         # x86_64 tests the Flutter 3.24.5 sources most platforms ship, arm64 the patched 3.44 ones.
-        if: ${{ !inputs.upload-artifact }}
+        if: ${{ inputs.run-tests }}
         working-directory: flutter
         run: flutter test --timeout 60s
 
@@ -853,7 +856,7 @@ jobs:
           cargo test --locked --release --lib update_metadata::tests --features "flutter,hwcodec,unix-file-copy-paste${{ matrix.job.extra-cargo-features }}"
 
       - name: Run the Rust tests
-        if: ${{ !inputs.upload-artifact && matrix.job.arch == 'aarch64' }}
+        if: ${{ inputs.run-tests && matrix.job.arch == 'aarch64' }}
         run: |
           # The build's own features, so the tests see the code that ships. MACOSX_DEPLOYMENT_TARGET
           # comes from the build step's export.

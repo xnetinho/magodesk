@@ -46,6 +46,19 @@ class VcpkgCache(unittest.TestCase):
             self.assertRegex(ref, r"^[0-9a-f]{40}$")
 
 
+class UpstreamTests(unittest.TestCase):
+    def test_its_own_test_steps_have_a_switch_and_are_off_by_default(self):
+        # With the captive settings applied, upstream's network/key-exchange tests fail or hang; a warm-up must not run them.
+        self.assertNotIn("!inputs.upload-artifact", BUILD)
+        self.assertEqual(BUILD.count("inputs.run-tests"), 3)
+        spec = yaml.safe_load(BUILD)[True]["workflow_call"]["inputs"]["run-tests"]
+        self.assertEqual((spec["type"], spec["default"]), ("boolean", False))
+
+    def test_neither_the_warm_up_nor_the_release_turns_them_on(self):
+        self.assertNotIn("run-tests", WARM)
+        self.assertNotIn("run-tests", RELEASE)
+
+
 class WarmUp(unittest.TestCase):
     def setUp(self):
         self.d = yaml.safe_load(WARM)
