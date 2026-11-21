@@ -17,8 +17,11 @@ on:
         type: boolean
         default: false
 
+# The called build workflow declares contents: write for its two jobs that publish (SBOM, release notes), and a
+# called workflow cannot ask for more than its caller grants. With upload-artifact: false both are skipped, so
+# nothing is ever written; the grant only has to exist for GitHub to accept the workflow.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: magodesk-warm

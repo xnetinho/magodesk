@@ -117,6 +117,8 @@ EDITS = [
      '          [ -n "$RD_APP_NAME" ] || { echo "::error::repository variable RD_APP_NAME is required"; exit 1; }\n'
      "      - name: Checkout source code\n        if: ${{ inputs.publish-update-metadata }}\n", 1),
     # ---- which platform runs
+    # the SBOM job only writes to the release: a warm-up (upload-artifact: false) skips it, so the caller needs no write access
+    ("  generate-sbom:\n", "  generate-sbom:\n    if: ${{ inputs.upload-artifact }}\n", 1),
     ("  build-for-macOS:\n", "  build-for-macOS:\n    if: ${{ inputs.macos }}\n", 1),
     ("  build-rustdesk-android:\n", "  build-rustdesk-android:\n    if: ${{ inputs.android }}\n", 1),
     ("    name: build rustdesk android universal apk\n    if: ${{ inputs.upload-artifact }}\n",

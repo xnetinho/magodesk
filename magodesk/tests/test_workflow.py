@@ -58,8 +58,12 @@ class WarmUp(unittest.TestCase):
         self.assertEqual(self.d["jobs"]["build"]["needs"], ["preflight"])
         self.assertEqual(self.d["jobs"]["preflight"]["needs"], ["guard"])
 
-    def test_it_cannot_write_to_the_repository(self):
-        self.assertEqual(self.d["permissions"], {"contents": "read"})
+    def test_the_jobs_that_could_write_are_skipped_by_the_warm_up_flag(self):
+        # the caller must grant what the called workflow declares (contents: write), so the safety is the skip
+        self.assertEqual(self.d["permissions"], {"contents": "write"})
+        for job, body in JOBS.items():
+            if (body.get("permissions") or {}).get("contents") == "write":
+                self.assertIn("inputs.upload-artifact", str(body.get("if")), job)
 
     def test_every_publishing_step_of_the_build_has_the_upload_guard(self):
         for job, body in JOBS.items():

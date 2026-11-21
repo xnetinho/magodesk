@@ -119,6 +119,7 @@ jobs:
         run: python res/update/generate_update_metadata.py check-key
 
   generate-sbom:
+    if: ${{ inputs.upload-artifact }}
     needs: [validate-update-metadata-keys]
     runs-on: ubuntu-latest
 
