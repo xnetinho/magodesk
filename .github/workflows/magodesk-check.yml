@@ -1,8 +1,9 @@
 name: MagoDesk upstream check
 
-# Never builds and never changes the repository. It only tells you whether the upstream that is
-# in this fork right now can still be branded and built, and opens ONE issue when it cannot.
-#   - every day: after you press "Sync Fork" the next run looks at the new code
+# Never builds and never changes the repository. It answers one question: "if I merge the newest
+# rustdesk/rustdesk into this fork now, do our rules still fit?" It does the merge only inside this
+# throwaway runner, runs the checks on the result, and opens ONE issue when something does not fit.
+#   - every day (the schedule may not fire on a fork: then run it by hand)
 #   - on demand: Actions > MagoDesk upstream check > Run workflow
 # The package build is yours to start (publish a release, see magodesk-release.yml).
 on:
@@ -25,13 +26,12 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          fetch-depth: 0
           submodules: recursive
 
-      - name: Record the commit being checked
-        id: seen
-        run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          git log -1 --format='Checking %h %s' >> "$GITHUB_STEP_SUMMARY"
+      - name: Merge the newest upstream here (not pushed)
+        id: up
+        run: bash magodesk/preview_merge.sh
 
       - name: Check the branding rules, the generated workflow and the tests
         id: check
@@ -43,13 +43,13 @@ jobs:
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open or update the issue when something no longer fits
-        if: steps.check.outputs.rc != '0'
+        if: steps.check.outputs.rc != '0' || steps.up.outputs.merge == 'conflict' || steps.up.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           title="MagoDesk: the upstream code no longer fits the branding rules"
-          body="$(printf 'Commit checked: `%s`\n\n%s\n\nFix `magodesk/rules.py` (or run `python3 magodesk/make_workflow.py` and commit the result), then run this workflow again. Do not publish a release until it passes.\n' "${{ steps.seen.outputs.sha }}" "$(cat report.md)")"
+          body="$(printf 'Upstream checked: `%s` (%s new commit(s)). Simulated merge: %s.\n\n%s\n\nFix `magodesk/rules.py` (or run `python3 magodesk/make_workflow.py` and commit the result), then run this workflow again. Do not publish a release until it passes.\n' "${{ steps.up.outputs.up }}" "${{ steps.up.outputs.new }}" "${{ steps.up.outputs.merge }}" "$(cat report.md 2>/dev/null)")"
           n="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"
@@ -58,15 +58,15 @@ jobs:
           fi
 
       - name: Close the issue when everything fits again
-        if: steps.check.outputs.rc == '0'
+        if: steps.check.outputs.rc == '0' && steps.up.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           title="MagoDesk: the upstream code no longer fits the branding rules"
           n="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
-          [ -z "$n" ] || gh issue close "$n" --comment "Fixed: all checks pass on \`${{ steps.seen.outputs.sha }}\`."
+          [ -z "$n" ] || gh issue close "$n" --comment "Fixed: all checks pass with upstream \`${{ steps.up.outputs.up }}\`."
 
-      - name: Fail the run when a check failed
-        if: steps.check.outputs.rc != '0'
+      - name: Fail the run when something did not fit
+        if: steps.check.outputs.rc != '0' || steps.up.outcome == 'failure'
         run: exit 1
