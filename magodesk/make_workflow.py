@@ -163,8 +163,13 @@ INSERT_BEFORE = [
 ]
 
 # Matrix key that names the vcpkg triplet, per job (the Android matrix has no vcpkg-triplet, only the cargo target).
-VCPKG_TRIPLET_KEY = {"build-for-windows-flutter": "vcpkg-triplet", "build-for-macOS": "vcpkg-triplet",
-                     "build-rustdesk-android": "target"}
+# macOS is left out on purpose: its two caches (~1.5 GB each) pushed the repository over the 10 GB limit, and its time is
+# dominated by flutter/Xcode, which a cache does not shorten. Only Windows and Android are cached.
+VCPKG_TRIPLET_KEY = {"build-for-windows-flutter": "vcpkg-triplet", "build-rustdesk-android": "target"}
+
+# Only the default branch writes the compiler cache (a release only reads it): every release is a new tag, and a cache
+# saved in a tag's scope is 1.4-2.2 GB per platform that nobody can read again.
+RUST_CACHE_SAVE_IF = "          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}\n"
 
 
 def split_jobs(text):
@@ -188,6 +193,15 @@ def insert_stamp(job_name, text):
     if not m:
         fail(f"{job_name}: no checkout step found")
     return text[:m.end()] + ("\n" if not text[:m.end()].endswith("\n\n") else "") + STAMP + text[m.end():]
+
+
+def drop_rust_cache(text):
+    """The macOS job does not use the compiler cache (see VCPKG_TRIPLET_KEY)."""
+    pat = re.compile(r"      - uses: Swatinem/rust-cache@\S+ # v2\n        with:\n(?:          .*\n)+\n")
+    found = pat.findall(text)
+    if len(found) != 1:
+        fail(f"build-for-macOS: rust-cache step found {len(found)}x, wanted 1x")
+    return pat.sub("", text, count=1)
 
 
 def mac_ad_hoc(text):
@@ -240,6 +254,7 @@ def generate(src_text):
     for k in ("build-for-windows-flutter", "build-for-macOS", "build-rustdesk-android", "build-rustdesk-android-universal"):
         kept[k] = insert_stamp(k, kept[k])
     kept["build-for-macOS"], old_rename = mac_ad_hoc(kept["build-for-macOS"])
+    kept["build-for-macOS"] = drop_rust_cache(kept["build-for-macOS"])
     body = "".join(kept.values())
     text = head + "\njobs:\n" + body
     if not text.endswith("\n"):
@@ -253,6 +268,12 @@ def generate(src_text):
         if got != n:
             fail(f"edit not applied as expected ({got}x found, {n}x wanted): {old.strip()[:70]!r}")
         text = text.replace(old, new)
+    # the remaining rust-cache steps (Windows, Android) only save on the default branch
+    for anchor, n in (("          prefix-key: ${{ matrix.job.os }}\n", 1), ("          key: ${{ matrix.job.target }}\n", 1)):
+        got = text.count(anchor)
+        if got != n:
+            fail(f"rust-cache anchor found {got}x, wanted {n}x: {anchor.strip()!r}")
+        text = text.replace(anchor, anchor + RUST_CACHE_SAVE_IF)
     for job, key in VCPKG_TRIPLET_KEY.items():
         i = text.index(f"\n  {job}:\n")
         j = text.index("\n  ", i + 5)

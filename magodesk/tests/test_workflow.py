@@ -21,11 +21,11 @@ class VcpkgCache(unittest.TestCase):
         self.assertNotIn("x-gha", BUILD)
         # `runner` is not a context of the workflow-level env, so the value is exported by a step of each job
         self.assertNotIn("runner.temp }}/vcpkg-binary-cache,readwrite", BUILD)
-        self.assertEqual(BUILD.count('echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"'), 3)
+        self.assertEqual(BUILD.count('echo "VCPKG_BINARY_SOURCES=clear;files,${dir},readwrite" >> "$GITHUB_ENV"'), 2)
         self.assertNotRegex(BUILD, r"(?m)^  VCPKG_BINARY_SOURCES:")
 
     def test_every_vcpkg_job_restores_the_cache_between_setup_and_install(self):
-        for job in ("build-for-windows-flutter", "build-for-macOS", "build-rustdesk-android"):
+        for job in ("build-for-windows-flutter", "build-rustdesk-android"):
             n = names(job)
             a, p, b, c = (n.index(x) for x in ("Setup vcpkg with Github Actions binary cache",
                                                 "Point vcpkg at the binary cache folder",
@@ -34,16 +34,30 @@ class VcpkgCache(unittest.TestCase):
 
     def test_the_cache_key_changes_with_the_vcpkg_commit_and_the_target(self):
         keys = re.findall(r"key: (vcpkg-bin-[^\n]+)", BUILD)
-        self.assertEqual(len(keys), 3)
+        self.assertEqual(len(keys), 2)
         for k in keys:
             self.assertIn("env.VCPKG_COMMIT_ID", k)
         # the Android matrix has no vcpkg-triplet, so it keys on the cargo target
         self.assertEqual(sorted(re.findall(r"matrix\.job\.(vcpkg-triplet|target)\b", "\n".join(keys))),
-                         ["target", "vcpkg-triplet", "vcpkg-triplet"])
+                         ["target", "vcpkg-triplet"])
 
     def test_the_cache_action_is_pinned_to_a_commit(self):
         for ref in re.findall(r"uses: actions/cache@(\S+)", BUILD):
             self.assertRegex(ref, r"^[0-9a-f]{40}$")
+
+
+class CacheScope(unittest.TestCase):
+    def test_macos_uses_no_cache_at_all(self):
+        # its caches (~1.5 GB each) pushed the repository over the 10 GB limit and its time is flutter/Xcode, not Rust
+        mac = yaml.dump(JOBS["build-for-macOS"])
+        self.assertNotIn("rust-cache", mac)
+        self.assertNotIn("vcpkg-binary-cache", mac)
+        self.assertNotIn("actions/cache", mac)
+
+    def test_only_the_default_branch_saves_the_compiler_cache(self):
+        # a release is a new tag: a cache saved in its scope is 1.4-2.2 GB that nobody can read again
+        self.assertEqual(BUILD.count("Swatinem/rust-cache"), 2)
+        self.assertEqual(BUILD.count("save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"), 2)
 
 
 class UpstreamTests(unittest.TestCase):
