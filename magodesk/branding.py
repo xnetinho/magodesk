@@ -10,6 +10,10 @@ Inputs (GitHub secrets and variables, passed as environment variables):
     RD_APP_NAME       variable  product name, letters and digits only
     RD_ANDROID_ID     variable  Android applicationId        (default br.com.diomedes.<app lowercase>)
     RD_BUNDLE_PREFIX  variable  macOS bundle id prefix       (default br.com.diomedes)
+    RUSTDESK_UPDATE_ED25519_PUBLIC_KEY  variable  public key that verifies the signed update metadata
+                      (base64 of 32 bytes; the matching seed is the secret RUSTDESK_UPDATE_ED25519_SEED, used by the
+                      release workflow to sign, never read here)
+    RD_UPDATE_REPO    variable  owner/repo that publishes the releases (default: GITHUB_REPOSITORY, then xnetinho/magodesk)
 
 What it does, in this order: validate the inputs, check that the tree is upstream's, copy
 magodesk/captive.rs, apply magodesk/rules.py, stamp the version of --tag. RD_HOST and RD_KEY are
@@ -30,6 +34,9 @@ sys.path.insert(0, str(HERE))
 from rules import RULES  # noqa: E402
 
 DEFAULT_ANDROID_PREFIX = "br.com.diomedes"
+import base64
+
+DEFAULT_UPDATE_REPO = "xnetinho/magodesk"
 HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$")
 KEY_RE = re.compile(r"^[A-Za-z0-9+/]{42,44}={0,2}$")
 
@@ -57,12 +64,28 @@ def inputs(env):
         fail(f"RD_ANDROID_ID '{android_id}' is not a valid Android application id")
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z][A-Za-z0-9-]*)+", prefix):
         fail(f"RD_BUNDLE_PREFIX '{prefix}' is not a valid reverse-DNS prefix")
-    return dict(app=app, android_id=android_id, bundle=f"{prefix}.{app.lower()}")
+    update_key = env.get("RUSTDESK_UPDATE_ED25519_PUBLIC_KEY", "")
+    if not update_key:
+        fail("missing: RUSTDESK_UPDATE_ED25519_PUBLIC_KEY. Without it the client could not verify an update; "
+             "see magodesk/CAPTIVE.md (update signing key)")
+    try:
+        raw = base64.b64decode(update_key, validate=True)
+    except ValueError:
+        fail("RUSTDESK_UPDATE_ED25519_PUBLIC_KEY is not valid base64")
+    if len(raw) != 32 or base64.b64encode(raw).decode() != update_key:
+        fail("RUSTDESK_UPDATE_ED25519_PUBLIC_KEY must be the canonical base64 of exactly 32 bytes")
+    repo = env.get("RD_UPDATE_REPO") or env.get("GITHUB_REPOSITORY") or DEFAULT_UPDATE_REPO
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+", repo):
+        fail(f"RD_UPDATE_REPO '{repo}' is not owner/repo")
+    return dict(app=app, android_id=android_id, bundle=f"{prefix}.{app.lower()}",
+                update_key=", ".join(str(b) for b in raw), update_repo=repo)
 
 
 def fill(text, v):
     return (text.replace("@APP_LOWER@", v["app"].lower()).replace("@APP@", v["app"])
-            .replace("@ANDROID_ID@", v["android_id"]).replace("@BUNDLE@", v["bundle"]))
+            .replace("@ANDROID_ID@", v["android_id"]).replace("@BUNDLE@", v["bundle"])
+            .replace("@UPDATE_KEY@", v["update_key"])
+            .replace("@UPDATE_RELEASES@", f"https://github.com/{v['update_repo']}/releases"))
 
 
 def apply_rules(root, v, check):

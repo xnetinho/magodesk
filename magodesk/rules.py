@@ -6,6 +6,8 @@ when upstream changes one, branding.py fails and names the rule.
 
 Grouped by what the rule does:
   captive wiring   src/*            the client is locked to our server (code in magodesk/captive.rs)
+  update check     src/common.rs, src/updater*, src/update_metadata.rs, flutter/lib   our releases, our signing key
+                   (code in magodesk/updater_check.rs)
   Windows          flutter/windows, libs/portable, build.py, src/platform/windows.rs
   Android          flutter/android, flutter/lib/mobile
   macOS            flutter/macos, Cargo.toml bundle metadata
@@ -183,15 +185,6 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTT
      r'''        let mut id = crate::captive::peer_id(&id).to_owned();'''),
     # src/common.rs
     ('src/common.rs',
-     r'''pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
-    let (request, url) =''',
-     r'''pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
-    // a captive build must never fetch (and then install) a stock RustDesk
-    if crate::captive::is_captive() {
-        return Ok(());
-    }
-    let (request, url) ='''),
-    ('src/common.rs',
      r'''pub fn load_custom_client() {
     #[cfg(debug_assertions)]''',
      r'''pub fn load_custom_client() {
@@ -212,6 +205,8 @@ mod custom_server;''',
      r'''pub mod core_main;
 #[path = "../magodesk/captive.rs"]
 mod captive;
+#[path = "../magodesk/updater_check.rs"]
+mod updater_check;
 mod custom_server;'''),
     # src/platform/windows.rs
     ('src/platform/windows.rs',
@@ -286,4 +281,101 @@ identifier = "com.carriez.rustdesk"''',
      r'''[package.metadata.bundle]
 name = "@APP@"
 identifier = "@BUNDLE@"'''),
+    # ---- update check against our own releases (Windows installed: installs itself; Android: notice with the link).
+    #      The logic lives in magodesk/updater_check.rs; these rules only wire it into the stock code.
+    # the check runs where updater_check says so, not only for a stock "RustDesk" build
+    ('src/common.rs',
+     r'''pub fn check_software_update() {
+    if is_custom_client() {
+        return;
+    }''',
+     r'''pub fn check_software_update() {
+    if !crate::updater_check::check_enabled() {
+        return;
+    }'''),
+    # the request: a GET to our releases/latest instead of the POST to api.rustdesk.com
+    ('src/common.rs',
+     r'''pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    let (request, url) =''',
+     r'''pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    if crate::captive::is_captive() {
+        let result = match crate::updater_check::check_latest_release().await {
+            Ok(bytes) => process_software_update_check_response(bytes),
+            Err(err) => Err(err),
+        };
+        if result.is_err() {
+            clear_software_update_url();
+        }
+        return result;
+    }
+    let (request, url) ='''),
+    # the release page must belong to the update repository (owner/repo come from RD_UPDATE_REPO)
+    ('src/common.rs',
+     r'''    let release_id = match segments.as_slice() {
+        ["rustdesk", "rustdesk", "releases", "tag", release_id] => *release_id,
+        ["rustdesk", "rustdesk", "releases", "tag", release_id, ""] => *release_id,''',
+     r'''    let (update_owner, update_repo) = crate::updater_check::update_owner_repo();
+    let release_id = match segments.as_slice() {
+        [owner, repo, "releases", "tag", release_id] if *owner == update_owner && *repo == update_repo => *release_id,
+        [owner, repo, "releases", "tag", release_id, ""] if *owner == update_owner && *repo == update_repo => *release_id,'''),
+    # the metadata and the artifacts are downloaded from the same repository
+    ('src/updater/artifact.rs',
+     r'''    let expected_artifact_url_prefix =
+        format!("https://github.com/rustdesk/rustdesk/releases/download/{release_id}/");''',
+     r'''    let expected_artifact_url_prefix = format!(
+        "https://github.com/{}/releases/download/{release_id}/",
+        crate::updater_check::update_repo()
+    );'''),
+    ('src/updater/artifact.rs',
+     r'''    if owner != "rustdesk"
+        || repo != "rustdesk"
+        || releases != "releases"''',
+     r'''    if owner != crate::updater_check::update_owner_repo().0
+        || repo != crate::updater_check::update_owner_repo().1
+        || releases != "releases"'''),
+    # the signed metadata is verified against OUR public key (@UPDATE_KEY@ is filled in by branding.py)
+    ('src/update_metadata.rs',
+     r'''    key_id: "2026-ed25519-main",
+    algorithm: SIGNATURE_ALGORITHM,
+    public_key: [
+        52, 214, 32, 65, 191, 134, 137, 75, 157, 74, 67, 221, 150, 161, 118, 215, 218, 35, 236,
+        156, 127, 120, 133, 156, 197, 141, 37, 22, 47, 106, 181, 177,
+    ],''',
+     r'''    key_id: "2026-ed25519-main",
+    algorithm: SIGNATURE_ALGORITHM,
+    public_key: [@UPDATE_KEY@],'''),
+    # the Windows build that is NOT a stock RustDesk still installs an MSI/EXE update the same way
+    ('src/updater.rs',
+     r'''    let update_msi = crate::platform::is_msi_installed()? && !crate::is_custom_client();''',
+     r'''    let update_msi = crate::platform::is_msi_installed()?;'''),
+    ('src/flutter_ffi.rs',
+     r'''    let update_msi = crate::platform::windows::is_msi_installed()? && !crate::is_custom_client();''',
+     r'''    let update_msi = crate::platform::windows::is_msi_installed()?;'''),
+    # Flutter: the card and the check are offered where updater_check allows them (Windows installed, Android notice)
+    ('flutter/lib/common.dart',
+     r'''void checkUpdate() {
+  if (!isWeb) {
+    if (!bind.isCustomClient()) {''',
+     r'''void checkUpdate() {
+  if (!isWeb) {
+    if (isWindows || isAndroid) {'''),
+    ('flutter/lib/desktop/pages/desktop_home_page.dart',
+     r'''    if (!bind.isCustomClient() &&
+        updateUrl.isNotEmpty &&
+        !isCardClosed &&
+        bind.mainUriPrefixSync().contains('rustdesk')) {''',
+     r'''    if (isWindows &&
+        updateUrl.isNotEmpty &&
+        !isCardClosed) {'''),
+    ('flutter/lib/desktop/pages/desktop_home_page.dart',
+     r'''              ? 'https://github.com/rustdesk/rustdesk/releases/tag/${bind.mainGetNewVersion()}''',
+     r'''              ? '@UPDATE_RELEASES@/tag/${bind.mainGetNewVersion()}'''),
+    ('flutter/lib/mobile/pages/connection_page.dart',
+     r'''          if (!bind.isCustomClient() && !isIOS)
+            Obx(() => _buildUpdateUI(stateGlobal.updateUrl.value)),''',
+     r'''          if (isAndroid)
+            Obx(() => _buildUpdateUI(stateGlobal.updateUrl.value)),'''),
+    ('flutter/lib/mobile/pages/connection_page.dart',
+     r'''              final url = 'https://rustdesk.com/download';''',
+     r'''              final url = stateGlobal.updateUrl.value;'''),
 ]

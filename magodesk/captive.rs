@@ -43,9 +43,15 @@ fn locked_options(host: &str, key: &str) -> HashMap<String, String> {
     // empty, so a stale relay saved by the user cannot take over; hbbs hands out the relay
     m.insert("relay-server".to_owned(), String::new());
     m.insert("api-server".to_owned(), api_url(host));
-    m.insert("enable-check-update".to_owned(), "N".to_owned());
-    m.insert("allow-auto-update".to_owned(), "N".to_owned());
+    // The check and the automatic install follow the platform (see updater_check.rs): Windows installs the new version
+    // itself, Android only shows a notice, every other build neither checks nor installs.
+    m.insert("enable-check-update".to_owned(), yn(crate::updater_check::check_enabled()));
+    m.insert("allow-auto-update".to_owned(), yn(crate::updater_check::auto_update_enabled()));
     m
+}
+
+fn yn(on: bool) -> String {
+    (if on { "Y" } else { "N" }).to_owned()
 }
 
 /// Hard settings, the table that `custom.txt` fills in a stock custom client (read by `config::is_disable_account`
@@ -146,8 +152,8 @@ mod tests {
         assert_eq!(m["custom-rendezvous-server"], HOST_T);
         assert_eq!(m["key"], KEY_T);
         assert_eq!(m["relay-server"], "");
-        assert_eq!(m["enable-check-update"], "N");
-        assert_eq!(m["allow-auto-update"], "N");
+        assert_eq!(m["enable-check-update"], yn(crate::updater_check::check_enabled()));
+        assert_eq!(m["allow-auto-update"], yn(crate::updater_check::auto_update_enabled()));
     }
 
     #[test]

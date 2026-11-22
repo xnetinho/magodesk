@@ -53,6 +53,7 @@ jobs:
           RD_HOST: ${{ secrets.RD_HOST }}
           RD_KEY: ${{ secrets.RD_KEY }}
           RD_APP_NAME: ${{ vars.RD_APP_NAME }}
+          RUSTDESK_UPDATE_ED25519_PUBLIC_KEY: ${{ vars.RUSTDESK_UPDATE_ED25519_PUBLIC_KEY }}
         run: python3 magodesk/check_upstream.py --real-inputs
 
   build:

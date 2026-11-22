@@ -16,7 +16,11 @@ sys.path.insert(0, str(ROOT / "magodesk"))
 from rules import RULES  # noqa: E402
 
 BRANDING = ROOT / "magodesk" / "branding.py"
-ENV = {"RD_HOST": "rd.example.com", "RD_KEY": "A" * 43 + "=", "RD_APP_NAME": "MagoDesk"}
+# 32 bytes: 0,1,2,...,31
+UPDATE_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+UPDATE_KEY_ARRAY = ", ".join(str(i) for i in range(32))
+ENV = {"RD_HOST": "rd.example.com", "RD_KEY": "A" * 43 + "=", "RD_APP_NAME": "MagoDesk",
+       "RUSTDESK_UPDATE_ED25519_PUBLIC_KEY": UPDATE_KEY, "RD_UPDATE_REPO": "owner/repo"}
 
 
 def run(tree, *args, env=None):
@@ -97,10 +101,34 @@ class Branding(unittest.TestCase):
                     {"RD_ANDROID_ID": "NoDots"}, {"RD_BUNDLE_PREFIX": "nodots"}):
             self.assertEqual(run(self.tree, env=env).returncode, 1, env)
 
+    def test_the_update_key_and_repository_reach_the_files(self):
+        run(self.tree)
+        meta = (self.tree / "src/update_metadata.rs").read_text()
+        self.assertIn(f"public_key: [{UPDATE_KEY_ARRAY}],", meta)
+        self.assertNotIn("52, 214, 32, 65", meta)  # upstream's key is gone
+        self.assertIn("https://github.com/owner/repo/releases/tag/", (self.tree / "flutter/lib/desktop/pages/desktop_home_page.dart").read_text())
+
+    def test_the_update_repository_defaults_to_the_github_repository(self):
+        run(self.tree, env={"RD_UPDATE_REPO": None, "GITHUB_REPOSITORY": "me/app"})
+        self.assertIn("https://github.com/me/app/releases/tag/", (self.tree / "flutter/lib/desktop/pages/desktop_home_page.dart").read_text())
+
+    def test_a_missing_or_bad_update_key_fails(self):
+        before = snapshot(self.tree)
+        for bad in ("", "not base64!!", "AAAA", UPDATE_KEY[:-4], UPDATE_KEY.rstrip("=") + "A=="):
+            r = run(self.tree, env={"RUSTDESK_UPDATE_ED25519_PUBLIC_KEY": bad})
+            self.assertEqual(r.returncode, 1, repr(bad))
+            self.assertIn("UPDATE", r.stderr)
+        self.assertEqual(before, snapshot(self.tree))
+
+    def test_a_bad_update_repository_fails(self):
+        for bad in ("noslash", "a/b/c", "bad repo/x", "/x"):
+            self.assertEqual(run(self.tree, env={"RD_UPDATE_REPO": bad}).returncode, 1, bad)
+
     def test_secrets_are_never_printed(self):
         r = run(self.tree)
         self.assertNotIn(ENV["RD_HOST"], r.stdout + r.stderr)
         self.assertNotIn(ENV["RD_KEY"], r.stdout + r.stderr)
+        self.assertNotIn(UPDATE_KEY, r.stdout + r.stderr)
 
     def test_not_an_upstream_tree(self):
         r = run(self.tmp / "nothing")

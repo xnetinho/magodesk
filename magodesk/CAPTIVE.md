@@ -19,9 +19,26 @@ A chave privada nunca entra aqui. Sem `RD_HOST` e `RD_KEY` o build não é cativ
 ## O que fica travado
 
 - Servidor, chave, `relay-server` e `api-server` (em `OVERWRITE_SETTINGS`).
-- Verificação e instalação de atualização do upstream.
+- A verificação de atualização do **RustDesk oficial** (`api.rustdesk.com`): nunca é consultada. A atualização própria está na seção "Atualização automática".
 - O servidor no nome do `.exe` e o atalho `id@outroservidor` são ignorados.
 - **Login, agenda de endereços e grupos ficam desligados** (`disable-account=Y` em `HARD_SETTINGS`, a mesma tabela que o `custom.txt` de um cliente personalizado preenche). O `hbbs`/`hbbr` oficial não tem API de contas, então o botão "Login" só levaria a um formulário que nunca funciona. A opção some em todas as telas que o upstream já protege com `isDisableAccount`: configurações do desktop e do celular, barra de ferramentas e as abas de agenda e grupos. Para voltar a mostrar o login (por exemplo, com um servidor que tenha API), remova `hard_options()` de `magodesk/captive.rs`.
+
+## Atualização automática
+
+Só o **Windows instalado** se atualiza sozinho. O Android só mostra um aviso com o link da release. O `.exe` portátil, o macOS e o Linux não se atualizam (o macOS não tem Developer ID; o portátil não tem onde se instalar).
+
+Como funciona (código em `magodesk/updater_check.rs`; as regras que o ligam ao código do upstream estão em `rules.py`, sob "update check"):
+1. O cliente abre `https://github.com/<dono>/<repo>/releases/latest`. O GitHub responde com um redirecionamento para a página da última release **estável** (as `-rcN` são pre-release e não contam). Sem API, sem token.
+2. A URL final só é aceita se for exatamente `…/<dono>/<repo>/releases/tag/<tag>`.
+3. O código do upstream baixa `rustdesk-update.json` e `rustdesk-update.json.sig` dessa release e confere a assinatura **Ed25519 contra a chave pública embutida** no cliente. Depois confere tamanho e SHA-256 do instalador e o executa com `--update`.
+4. O job `sign-update-metadata` (gerado por `make_workflow.py`) assina os 4 pacotes Windows (`.exe` e `.msi`, x64 e ARM64) depois que eles estão na release, **só para tags estáveis**, e anexa a assinatura antes do metadado.
+
+Chave de assinatura: par Ed25519 gerado em 22/nov/2026. A **semente** é o Secret `RUSTDESK_UPDATE_ED25519_SEED` e fica em `secrets/atualizacao-ed25519.txt` (fora do Git). A **pública** é a variável `RUSTDESK_UPDATE_ED25519_PUBLIC_KEY`, e o build a grava no cliente; sem ela o build para. **Faça backup da semente fora desta máquina:** sem ela nenhuma instalação aceita uma atualização nova. Trocar o par exige uma versão nova do cliente, instalada à mão.
+
+Limites que valem saber:
+- A `1.0.0` tem a verificação desligada, então **não se atualiza sozinha**. A primeira atualização automática observável é **1.0.1 → 1.0.2**.
+- O repositório vem de `RD_UPDATE_REPO` (padrão: o repositório que roda o build). Um fork com outro dono precisa de outra chave.
+- A instalação roda como serviço e só foi lida no código, nunca executada: **testar numa máquina Windows** antes de contar com ela.
 
 ## Proxy e WebSocket
 

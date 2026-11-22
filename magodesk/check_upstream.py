@@ -4,12 +4,12 @@
     python3 magodesk/check_upstream.py [--report FILE] [--real-inputs]
 
 Runs, in order, and reports every failure instead of stopping at the first:
-  1. branding.py --check          the 48 text rules still match the upstream files
+  1. branding.py --check          the text rules still match the upstream files
   2. make_workflow.py --check     magodesk-build.yml is what upstream's flutter-build.yml produces today
   3. the unit tests of the engine
 
 Exit code 0 only if all three pass. --report writes a Markdown summary (used for the GitHub issue).
-RD_HOST, RD_KEY and RD_APP_NAME are needed by step 1. By default, missing ones are replaced by harmless
+RD_HOST, RD_KEY, RD_APP_NAME and RUSTDESK_UPDATE_ED25519_PUBLIC_KEY are needed by step 1. By default, missing ones are replaced by harmless
 stand-ins (the daily check looks at the shape of the files, never at the real server). With --real-inputs
 (the release preflight) a missing or invalid one FAILS, so a release stops before compiling anything.
 """
@@ -21,7 +21,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-STAND_IN = {"RD_HOST": "check.example.com", "RD_KEY": "A" * 43 + "=", "RD_APP_NAME": "MagoDesk"}
+STAND_IN = {"RD_HOST": "check.example.com", "RD_KEY": "A" * 43 + "=", "RD_APP_NAME": "MagoDesk",
+            "RUSTDESK_UPDATE_ED25519_PUBLIC_KEY": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
 
 
 def run(cmd, env):

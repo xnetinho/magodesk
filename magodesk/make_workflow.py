@@ -91,6 +91,77 @@ RELEASE_NOTES = '''  release-notes:
           gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --notes-file new-body.txt
 '''
 
+SIGN_UPDATE = '''
+  sign-update-metadata:
+    # Windows installed clients update themselves from the signed rustdesk-update.json of the newest STABLE release.
+    # It runs after the packages are on the release, signs their exact bytes, verifies the result and attaches it.
+    name: sign the update metadata
+    needs: [build-for-windows-flutter]
+    if: ${{ !cancelled() && inputs.upload-artifact && needs.build-for-windows-flutter.result == 'success' && !contains(inputs.upload-tag, '-') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: 'python -m pip install --only-binary=:all: --require-hashes -r res/update/update_metadata_requirements.txt'
+
+      - name: Download the Windows packages of the release
+        shell: bash
+        run: |
+          tag="${TAG_NAME#v}"; echo "VERSION=${tag%%-*}" >> "$GITHUB_ENV"
+          echo "APP_LOWER=$(printf '%s' "$RD_APP_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+          mkdir artifacts
+          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir artifacts --pattern '*.exe' --pattern '*.msi'
+          ls -l artifacts
+
+      - name: Sign update metadata
+        env:
+          RUSTDESK_UPDATE_ED25519_SEED: ${{ secrets.RUSTDESK_UPDATE_ED25519_SEED }}
+        run: |
+          p="./artifacts/${APP_LOWER}-${TAG_NAME}"
+          python res/update/generate_update_metadata.py sign \\
+            --artifact windows x86_64 exe "$p-x86_64.exe" \\
+            --artifact windows x86_64 msi "$p-x86_64.msi" \\
+            --artifact windows aarch64 exe "$p-aarch64.exe" \\
+            --artifact windows aarch64 msi "$p-aarch64.msi" \\
+            --version "$VERSION" --release-id "$TAG_NAME" \\
+            --package-id rustdesk \\
+            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download" \\
+            --published-at "$(git log -1 --format=%cI)" \\
+            --metadata-out ./rustdesk-update.json \\
+            --signature-out ./rustdesk-update.json.sig
+
+      - name: Verify update metadata
+        run: |
+          p="./artifacts/${APP_LOWER}-${TAG_NAME}"
+          python res/update/generate_update_metadata.py verify \\
+            --metadata ./rustdesk-update.json \\
+            --signature ./rustdesk-update.json.sig \\
+            --artifact "$p-x86_64.exe" --artifact "$p-x86_64.msi" \\
+            --artifact "$p-aarch64.exe" --artifact "$p-aarch64.msi" \\
+            --version "$VERSION" --release-id "$TAG_NAME" \\
+            --package-id rustdesk \\
+            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download"
+
+      # Clients find the release through the metadata, so it goes last, after the signature.
+      - name: Attach the signature, then the metadata
+        run: |
+          gh release upload "$TAG_NAME" ./rustdesk-update.json.sig --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG_NAME" ./rustdesk-update.json --repo "$GITHUB_REPOSITORY" --clobber
+'''
+
 # (anchor in upstream, replacement, expected count), applied to the text that is left after dropping jobs.
 EDITS = [
     # ---- header: name, inputs, env
@@ -105,6 +176,8 @@ EDITS = [
      '  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"\n'
      "  # captive client: server and public key baked in at compile time (magodesk/captive.rs)\n"
      '  RD_HOST: "${{ secrets.RD_HOST }}"\n  RD_KEY: "${{ secrets.RD_KEY }}"\n'
+     "  # public key that verifies the signed updates (repository variable); the seed is only used by sign-update-metadata\n"
+     '  RUSTDESK_UPDATE_ED25519_PUBLIC_KEY: "${{ vars.RUSTDESK_UPDATE_ED25519_PUBLIC_KEY }}"\n'
      "  # product name (repository variable, not a secret)\n"
      '  RD_APP_NAME: "${{ vars.RD_APP_NAME }}"\n'
      "  # -rcN tags are pre-releases; vX.Y.Z is final. The release action overwrites the flag on an\n"
@@ -116,6 +189,7 @@ EDITS = [
      "        run: |\n"
      '          [ -n "$RD_HOST" ] && [ -n "$RD_KEY" ] || { echo "::error::secrets RD_HOST and RD_KEY are required"; exit 1; }\n'
      '          [ -n "$RD_APP_NAME" ] || { echo "::error::repository variable RD_APP_NAME is required"; exit 1; }\n'
+     '          [ -n "$RUSTDESK_UPDATE_ED25519_PUBLIC_KEY" ] || { echo "::error::repository variable RUSTDESK_UPDATE_ED25519_PUBLIC_KEY is required"; exit 1; }\n'
      "      - name: Checkout source code\n        if: ${{ inputs.publish-update-metadata }}\n", 1),
     # ---- which platform runs
     # the SBOM job only writes to the release: a warm-up (upload-artifact: false) skips it, so the caller needs no write access
@@ -259,7 +333,7 @@ def generate(src_text):
     text = head + "\njobs:\n" + body
     if not text.endswith("\n"):
         text += "\n"
-    text += "\n" + RELEASE_NOTES
+    text += "\n" + RELEASE_NOTES + SIGN_UPDATE
     # the dmg that upstream uploads and publishes after the rename is named by DMG_FILE
     for old, new, n in EDITS:
         if new is None:

@@ -104,5 +104,43 @@ class WarmUp(unittest.TestCase):
         self.assertNotIn("upload-artifact: false", RELEASE)
 
 
+class SignUpdate(unittest.TestCase):
+    job = JOBS["sign-update-metadata"]
+    text = BUILD[BUILD.index("\n  sign-update-metadata:"):]
+
+    def test_it_only_runs_for_a_stable_tag_that_was_published(self):
+        cond = self.job["if"]
+        self.assertIn("inputs.upload-artifact", cond)
+        self.assertIn("!contains(inputs.upload-tag, '-')", cond)
+        self.assertIn("build-for-windows-flutter", self.job["needs"])
+
+    def test_it_signs_only_the_windows_installable_packages_of_our_repository(self):
+        self.assertEqual(self.text.count("--artifact windows"), 4)
+        self.assertNotIn("macos", self.text)
+        self.assertNotIn("rustdesk/rustdesk", self.text)
+        self.assertIn('https://github.com/${GITHUB_REPOSITORY}/releases/download', self.text)
+        self.assertIn("--package-id rustdesk", self.text)
+
+    def test_it_verifies_before_it_publishes_and_the_metadata_goes_last(self):
+        n = [s.get("name") for s in self.job["steps"]]
+        self.assertLess(n.index("Verify update metadata"), n.index("Attach the signature, then the metadata"))
+        run = self.job["steps"][-1]["run"]
+        self.assertLess(run.index("rustdesk-update.json.sig"), run.index("rustdesk-update.json "))
+
+    def test_only_the_signing_step_reads_the_seed(self):
+        self.assertEqual(BUILD.count("secrets.RUSTDESK_UPDATE_ED25519_SEED"), 2)  # validate-keys (upstream) + signing
+        for s in self.job["steps"]:
+            if "RUSTDESK_UPDATE_ED25519_SEED" in str(s.get("env")):
+                self.assertEqual(s["name"], "Sign update metadata")
+
+    def test_the_public_key_reaches_the_build_the_preflight_and_the_warm_up(self):
+        self.assertIn('RUSTDESK_UPDATE_ED25519_PUBLIC_KEY: "${{ vars.RUSTDESK_UPDATE_ED25519_PUBLIC_KEY }}"', BUILD)
+        for text in (RELEASE, WARM):
+            self.assertIn("RUSTDESK_UPDATE_ED25519_PUBLIC_KEY: ${{ vars.RUSTDESK_UPDATE_ED25519_PUBLIC_KEY }}", text)
+
+    def test_a_build_without_the_public_key_stops_before_compiling(self):
+        self.assertIn("RUSTDESK_UPDATE_ED25519_PUBLIC_KEY is required", BUILD)
+
+
 if __name__ == "__main__":
     unittest.main()
