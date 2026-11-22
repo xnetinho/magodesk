@@ -121,6 +121,15 @@ O `flutter-nightly.yml` do upstream está desativado no GitHub; não há build n
 
 Os testes de `captive.rs` usam o `hbb_common` e só rodam junto com a árvore compilada (no CI). Os de lógica pura (opções travadas, nome do app, WebSocket por proxy, login desligado) foram rodados num crate isolado com um `hbb_common` simulado.
 
+## Cache de compilação
+
+O vcpkg do upstream removeu o provedor `x-gha`, então o `make_workflow.py` troca-o pelo provedor `files` mais `actions/cache`. O compilador de Rust usa o `rust-cache` do upstream. Regras:
+
+- **Só Windows e Android têm cache.** O macOS fica sem, porque seus caches (~1,5 GB cada) estouravam os 10 GB do repositório e o tempo dele é de `flutter`/Xcode.
+- **O GitHub só deixa um build ler o cache da própria branch ou da branch padrão.** Toda release nasce de uma tag nova, então ela nunca vê o cache de outra tag. Por isso o `magodesk-warm.yml` roda na `master` (manual e semanal) e é **só ele que grava** o cache do compilador (`save-if`); as releases apenas leem.
+- O aquecimento não publica nada (`upload-artifact: false`) e **não roda os testes do upstream** (`run-tests`, desligado): com as configurações do cliente travado aplicadas, os testes de rede deles falham ou travam por horas.
+- Depois de uma mudança grande no `Cargo.lock`, rode o aquecimento (*Actions → MagoDesk cache warm-up → Run workflow*, na `master`) antes de publicar, ou a release compila do zero.
+
 ## Como o fork é organizado
 
 **Nenhum arquivo do RustDesk é editado.** O fork é o upstream mais estes arquivos novos, todos em `magodesk/` (exceto os dois workflows, que o GitHub só aceita em `.github/workflows/`):
